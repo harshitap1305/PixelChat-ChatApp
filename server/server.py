@@ -17,9 +17,10 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+import socket
 
 
 # ---------------------------------------------------------------------------
@@ -263,9 +264,36 @@ async def websocket_endpoint(websocket: WebSocket):
 # Serve Frontend (Static Files)
 # ---------------------------------------------------------------------------
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for the Load Balancer."""
+    return {"status": "ok"}
+
+
 @app.get("/")
-async def serve_index():
-    """Serve the main chat HTML page."""
+async def serve_index(request: Request, delay: str = None, fail: str = None):
+    """Serve the main chat HTML page or simulate load balancer experiments."""
+    if fail == "true":
+        return JSONResponse(status_code=503, content={"error": "backend unavailable"})
+    
+    if delay:
+        try:
+            if delay.endswith("ms"):
+                ms = int(delay[:-2])
+                await asyncio.sleep(ms / 1000.0)
+            elif delay.endswith("s"):
+                s = int(delay[:-1])
+                await asyncio.sleep(s)
+        except ValueError:
+            pass
+
+    # If it's a test request (has delay/fail or from load generator), return JSON
+    if delay is not None or fail is not None or request.headers.get("User-Agent", "").startswith("Go-http-client"):
+        return {
+            "backend": socket.gethostname(),
+            "message": "ok"
+        }
+
     return FileResponse(str(CLIENT_DIR / "index.html"))
 
 
