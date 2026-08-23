@@ -205,10 +205,7 @@ $\begin{cases}
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{3cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert architecture diagram or terminal showing all systems connected.
-\vspace{3cm}}}
+\includegraphics[width=0.85\textwidth]{p1.png}
 \caption{System architecture overview}
 \label{fig:arch-screenshot}
 \end{figure}
@@ -381,10 +378,7 @@ proxy.ErrorHandler = func(rw http.ResponseWriter,
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot of \texttt{curl http://SYS1:8082/lb/status} showing all backends alive.
-\vspace{2.5cm}}}
+\includegraphics[width=0.85\textwidth]{p2.png}
 \caption{Load Balancer \texttt{/lb/status} endpoint showing healthy backends}
 \label{fig:lb-status}
 \end{figure}
@@ -412,11 +406,7 @@ async def health_check():
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot of backend health check response\\
-\texttt{curl http://172.17.0.39:8081/health}
-\vspace{2.5cm}}}
+\includegraphics[width=0.85\textwidth]{p3.png}
 \caption{Backend health check response}
 \label{fig:backend-health}
 \end{figure}
@@ -502,11 +492,7 @@ The messaging application server was deployed to all three backend systems using
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot showing the load balancer starting up\\
-and confirming ``Load Balancer running on :8082''
-\vspace{2.5cm}}}
+\includegraphics[width=0.85\textwidth]{p4.png}
 \caption{Load Balancer startup on Sys1}
 \label{fig:lb-startup}
 \end{figure}
@@ -563,11 +549,7 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot of Experiment~1 terminal output showing\\
-``Experiment 1\_backend finished in 14.86s''
-\vspace{2.5cm}}}
+\includegraphics[width=0.85\textwidth]{p5.png}
 \caption{Experiment 1: Single backend test execution}
 \label{fig:exp1-run}
 \end{figure}
@@ -602,11 +584,7 @@ Insert screenshot of Experiment~1 terminal output showing\\
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot of Experiment~2 terminal output showing\\
-``Experiment 3\_backends finished in 16.09s''
-\vspace{2.5cm}}}
+\includegraphics[width=0.85\textwidth]{p6.png}
 \caption{Experiment 2: Three backend test execution}
 \label{fig:exp2-run}
 \end{figure}
@@ -692,12 +670,7 @@ The messaging application from the previous group assignment has been connected 
 % ── SCREENSHOT PLACEHOLDER ──
 \begin{figure}[H]
 \centering
-\fbox{\parbox{0.8\textwidth}{\centering\vspace{3cm}
-\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot of the messaging application\\
-being accessed through the load balancer URL\\
-(e.g., \texttt{http://SYS1:8082/})
-\vspace{3cm}}}
+\includegraphics[width=0.85\textwidth]{p7.png}
 \caption{Messaging application accessed through the load balancer}
 \label{fig:messaging-integration}
 \end{figure}
