@@ -22,3 +22,10 @@ venv.bak/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Server uploads & database
+server/uploads/
+server/chat.db
+
+# SSL Certificates
+*.pem

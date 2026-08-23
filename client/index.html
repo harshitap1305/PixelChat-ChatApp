@@ -3,17 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="PixelChat — 8-bit real-time group chat">
-    <title>PixelChat — Real-Time Chat</title>
+    <meta name="description" content="PixelChat — 8-bit secure real-time group chat with AES-GCM encryption, ECDSA signatures, and multi-room support">
+    <title>PixelChat — Secure Real-Time Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=12">
 </head>
 <body>
 
     <!-- Scanline overlay -->
     <div class="scanlines"></div>
+
+    <!-- Security Certificate Overlay -->
+    <div id="cert-overlay" class="screen hidden" style="z-index: 9999; background: rgba(10, 15, 10, 0.95); display: flex; align-items: center; justify-content: center; text-align: center; padding: 2rem;">
+        <div class="pixel-panel" style="max-width: 600px;">
+            <h2 style="color: #ff5e5e; margin-bottom: 1rem;">⚠️ CONNECTION BLOCKED</h2>
+            <p style="margin-bottom: 2rem; font-family: 'VT323', monospace; font-size: 1.4rem; color: #a1b5a1; line-height: 1.4;">
+                Your browser is blocking the background connection to the backend server because it uses a self-signed security certificate on a different port.
+            </p>
+            <p style="margin-bottom: 2rem; font-family: 'VT323', monospace; font-size: 1.2rem; color: #a1b5a1; text-align: left;">
+                To fix this and join the quest:
+                <ol style="margin-top: 10px; margin-bottom: 10px;">
+                    <li>Click the button below (opens a new tab)</li>
+                    <li>Click <strong>Advanced</strong> &rarr; <strong>Accept the Risk and Continue</strong></li>
+                    <li>Once you see <code>{"status":"ok"}</code>, <strong>close that tab and return here</strong>!</li>
+                </ol>
+            </p>
+            <p style="color: #4CAF50; font-size: 1rem; margin-bottom: 1rem; font-family: 'VT323', monospace;">The app will automatically resume once the connection is authorized. Keep this page open!</p>
+            <a id="cert-auth-link" href="#" target="_blank" class="pixel-btn" style="display: inline-block; margin-bottom: 1rem; text-decoration: none; color: #fff; background: #2f4f2f; padding: 1rem 2rem;">AUTHORIZE SERVER</a>
+        </div>
+    </div>
 
     <!-- ═══════════════════ LOGIN SCREEN ═══════════════════ -->
     <div id="login-screen" class="screen">
@@ -27,45 +47,67 @@
             <div class="pixel-title-block">
                 <div class="blink-cursor">▶</div>
                 <h1 class="pixel-title">PIXEL<br>CHAT</h1>
-                <div class="title-sub">[ GROUP QUEST v1.0 ]</div>
-            </div>
-
-            <!-- Stats row -->
-            <div class="stat-row">
-                <div class="stat-box">
-                    <div class="stat-num" id="stat-players">?</div>
-                    <div class="stat-lbl">PLAYERS</div>
-                </div>
-                <div class="stat-divider">|</div>
-                <div class="stat-box">
-                    <div class="stat-num green">LIVE</div>
-                    <div class="stat-lbl">STATUS</div>
-                </div>
-                <div class="stat-divider">|</div>
-                <div class="stat-box">
-                    <div class="stat-num crimson">S1</div>
-                    <div class="stat-lbl">SEASON</div>
-                </div>
+                <div class="title-sub">[ GROUP QUEST v2.0 ]</div>
             </div>
 
             <!-- Login card -->
             <div class="pixel-card">
-                <div class="pixel-card-title">▸ ENTER YOUR NAME</div>
-                <div class="pixel-input-wrap">
-                    <span class="input-prompt">_</span>
-                    <input
-                        type="text"
-                        id="username-input"
-                        class="pixel-input"
-                        placeholder="HERO_NAME"
-                        maxlength="20"
-                        autocomplete="off"
-                        spellcheck="false"
-                    >
+
+                <!-- Tab switcher -->
+                <div class="auth-tabs">
+                    <button class="auth-tab active" id="tab-register" onclick="switchTab('register')">▸ SIGN UP</button>
+                    <button class="auth-tab" id="tab-login" onclick="switchTab('login')">▸ LOGIN</button>
                 </div>
-                <button id="join-btn" class="pixel-btn pixel-btn--primary">
-                    <span id="join-btn-text">► START QUEST</span>
-                </button>
+
+                <!-- ── CREATE ACCOUNT tab ── -->
+                <div id="panel-register" class="auth-panel">
+                    <div class="pixel-card-title" style="margin-top:12px;">▸ CHOOSE YOUR AVATAR</div>
+                    <div class="avatar-picker-grid" id="avatar-picker-grid">
+                        <!-- Dynamically rendered by app.js -->
+                    </div>
+
+                    <div class="pixel-card-title" style="margin-top:14px;">▸ USERNAME</div>
+                    <div class="pixel-input-wrap">
+                        <span class="input-prompt">_</span>
+                        <input type="text" id="reg-username" class="pixel-input"
+                            placeholder="HERO_NAME" maxlength="20"
+                            autocomplete="off" spellcheck="false">
+                    </div>
+
+                    <div class="pixel-card-title" style="margin-top:10px;">▸ PASSWORD</div>
+                    <div class="pixel-input-wrap">
+                        <span class="input-prompt">*</span>
+                        <input type="password" id="reg-password" class="pixel-input"
+                            placeholder="MIN 6 CHARS" autocomplete="new-password">
+                    </div>
+
+                    <button id="register-btn" class="pixel-btn pixel-btn--primary" style="margin-top:14px;">
+                        <span id="register-btn-text">► SIGN UP</span>
+                    </button>
+                </div>
+
+                <!-- ── LOGIN tab ── -->
+                <div id="panel-login" class="auth-panel hidden">
+                    <div class="pixel-card-title" style="margin-top:12px;">▸ USERNAME</div>
+                    <div class="pixel-input-wrap">
+                        <span class="input-prompt">_</span>
+                        <input type="text" id="login-username" class="pixel-input"
+                            placeholder="HERO_NAME" maxlength="20"
+                            autocomplete="username" spellcheck="false">
+                    </div>
+
+                    <div class="pixel-card-title" style="margin-top:10px;">▸ PASSWORD</div>
+                    <div class="pixel-input-wrap">
+                        <span class="input-prompt">*</span>
+                        <input type="password" id="login-password" class="pixel-input"
+                            placeholder="YOUR PASSWORD" autocomplete="current-password">
+                    </div>
+
+                    <button id="login-btn" class="pixel-btn pixel-btn--primary" style="margin-top:14px;">
+                        <span id="login-btn-text">► LOGIN</span>
+                    </button>
+                </div>
+
                 <p id="login-error" class="pixel-error"></p>
             </div>
 
@@ -76,6 +118,132 @@
                 <span class="deco-tile">♦</span>
                 <span class="deco-tile">♦</span>
                 <span class="deco-tile">♦</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════ LOBBY SCREEN ═══════════════════ -->
+    <div id="lobby-screen" class="screen hidden">
+
+        <div class="pixel-bg"></div>
+
+        <div class="lobby-wrap">
+
+            <!-- Lobby Header -->
+            <div class="lobby-header">
+                <div class="lobby-logo">
+                    <span class="logo-sprite">▣</span>
+                    <div>
+                        <div class="lobby-title">PIXEL<span class="crimson">CHAT</span></div>
+                        <div class="lobby-subtitle">SELECT YOUR QUEST</div>
+                    </div>
+                </div>
+                <div class="lobby-user-info">
+                    <span class="lobby-username-label" id="lobby-username-display"></span>
+                    <!-- XP + Rank chip -->
+                    <div class="lobby-xp-chip" id="lobby-xp-chip">
+                        <div class="lobby-xp-chip-top">
+                            <span class="lobby-xp-rank" id="lobby-xp-rank">NEWBIE</span>
+                            <span class="lobby-xp-nums" id="lobby-xp-nums">0 XP</span>
+                        </div>
+                        <div class="lobby-xp-bar-track">
+                            <div class="lobby-xp-bar-fill" id="lobby-xp-bar-fill" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <button class="lobby-help-btn" id="lobby-help-btn" title="Feature guide &amp; help">ⓘ HELP</button>
+                    <button class="lobby-logout-btn" id="lobby-logout-btn" title="Back to login">✕ LOGOUT</button>
+                </div>
+            </div>
+
+            <!-- Lobby Content -->
+            <div class="lobby-content">
+
+                <!-- LEFT: Create / Join panel -->
+                <div class="lobby-left-panel">
+
+                    <!-- Lobby Tab switcher -->
+                    <div class="lobby-tabs">
+                        <button class="lobby-tab active" id="ltab-create" onclick="switchLobbyTab('create')">✦ CREATE</button>
+                        <button class="lobby-tab" id="ltab-join" onclick="switchLobbyTab('join')">⌖ JOIN CODE</button>
+                    </div>
+
+                    <!-- CREATE ROOM panel -->
+                    <div id="lpanel-create" class="lobby-panel">
+                        <div class="pixel-card-title" style="margin-top:12px;">▸ ROOM AVATAR</div>
+                        <div class="avatar-picker-grid" id="room-avatar-picker-grid">
+                            <!-- Dynamically rendered by app.js -->
+                        </div>
+
+                        <div class="pixel-card-title" style="margin-top:14px;">▸ ROOM NAME</div>
+                        <div class="pixel-input-wrap">
+                            <span class="input-prompt">_</span>
+                            <input type="text" id="room-name-input" class="pixel-input"
+                                placeholder="THE GREAT HALL" maxlength="40"
+                                autocomplete="off" spellcheck="false">
+                        </div>
+
+                        <div class="pixel-card-title" style="margin-top:12px;">▸ VISIBILITY</div>
+                        <div class="room-visibility-toggle">
+                            <button class="visibility-btn active" id="vis-public" onclick="setVisibility(true)">
+                                🌐 PUBLIC
+                            </button>
+                            <button class="visibility-btn" id="vis-private" onclick="setVisibility(false)">
+                                🔒 PRIVATE
+                            </button>
+                        </div>
+                        <p class="visibility-hint" id="visibility-hint">Appears in the browse list</p>
+
+                        <button id="create-room-btn" class="pixel-btn pixel-btn--primary" style="margin-top:16px;">
+                            <span id="create-room-btn-text">✦ CREATE ROOM</span>
+                        </button>
+
+                        <p id="lobby-error" class="pixel-error"></p>
+                    </div>
+
+                    <!-- JOIN BY CODE panel -->
+                    <div id="lpanel-join" class="lobby-panel hidden">
+                        <div class="pixel-card-title" style="margin-top:14px;">▸ ENTER ROOM CODE</div>
+                        <div class="pixel-input-wrap room-code-wrap">
+                            <span class="input-prompt">⌖</span>
+                            <input type="text" id="room-code-input" class="pixel-input room-code-input"
+                                placeholder="ABC123" maxlength="6"
+                                autocomplete="off" spellcheck="false">
+                        </div>
+                        <p class="room-code-hint">6-character code, e.g. XKJ3P9</p>
+
+                        <button id="join-code-btn" class="pixel-btn pixel-btn--primary" style="margin-top:16px;">
+                            <span id="join-code-btn-text">⌖ JOIN ROOM</span>
+                        </button>
+
+                        <p id="join-code-error" class="pixel-error"></p>
+                    </div>
+
+                </div>
+
+                <!-- RIGHT: Browse panel -->
+                <div class="lobby-right-panel">
+                    <div class="browse-header">
+                        <span class="browse-title">▸ PUBLIC ROOMS</span>
+                        <button class="refresh-btn" id="refresh-rooms-btn" title="Refresh room list">↺</button>
+                    </div>
+
+                    <div class="room-search-wrap">
+                        <span class="input-prompt">🔍</span>
+                        <input type="text" id="room-search-input" class="pixel-input room-search-input"
+                            placeholder="SEARCH ROOMS..." autocomplete="off">
+                    </div>
+
+                    <div class="room-list-scroll" id="room-list-scroll">
+                        <!-- Room cards rendered by JS -->
+                        <div class="room-list-empty" id="room-list-empty">
+                            <div class="empty-icon">🏰</div>
+                            <div class="empty-text">NO PUBLIC ROOMS YET</div>
+                            <div class="empty-sub">CREATE ONE TO GET STARTED!</div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
         </div>
@@ -97,7 +265,25 @@
                     </div>
                 </div>
 
+                <!-- Room info badge -->
+                <div class="room-info-badge" id="room-info-badge">
+                    <div class="room-badge-code" id="room-badge-code">------</div>
+                    <div class="room-badge-name" id="room-badge-name">ROOM</div>
+                </div>
+
+                <!-- Room Owner Actions (visible to room creator only) -->
+                <div class="owner-actions-wrap hidden" id="owner-actions-wrap">
+                    <div class="owner-badge-title">👑 ROOM CREATOR</div>
+                    <button class="pixel-btn btn-sm btn-warning" id="clear-room-history-btn" title="Clear all chat history in this room">
+                        🧹 CLEAR HISTORY
+                    </button>
+                    <button class="pixel-btn btn-sm btn-danger" id="delete-room-btn" title="Permanently delete this chat room">
+                        🗑 DELETE ROOM
+                    </button>
+                </div>
+
                 <div class="panel-divider"></div>
+
 
                 <!-- XP Section -->
                 <div class="xp-block">
@@ -125,23 +311,7 @@
 
                 <ul class="user-list" id="user-list"></ul>
 
-                <div class="panel-divider"></div>
 
-                <!-- Sidebar stats -->
-                <div class="panel-stats">
-                    <div class="pstat">
-                        <div class="pstat-val" id="msg-count-stat">0</div>
-                        <div class="pstat-key">MSGS</div>
-                    </div>
-                    <div class="pstat">
-                        <div class="pstat-val crimson" id="streak-count">0</div>
-                        <div class="pstat-key">STREAK</div>
-                    </div>
-                    <div class="pstat">
-                        <div class="pstat-val green" id="session-time-stat">0m</div>
-                        <div class="pstat-key">TIME</div>
-                    </div>
-                </div>
 
             </aside>
 
@@ -153,15 +323,19 @@
                     <div class="hdr-left">
                         <span class="hdr-sprite">▣</span>
                         <div class="hdr-info">
-                            <div class="hdr-room"># GREAT HALL</div>
+                            <div class="hdr-room" id="hdr-room-name"># GREAT HALL</div>
                             <div class="hdr-sub" id="header-subtitle">0 PLAYERS</div>
                         </div>
                     </div>
                     <div class="hdr-right">
+                        <span class="hdr-room-code-badge" id="hdr-room-code" title="Room code — share this to invite others"></span>
+                        <span class="crypto-status" id="crypto-status" title="Crypto not initialised">⚠ NO CRYPTO</span>
+                        <button class="hdr-icon-btn" id="info-btn" title="Security &amp; receipt guide">ⓘ</button>
                         <div class="connection-status" id="connection-status">
                             <span class="status-dot connected" id="status-dot"></span>
                             <span class="status-text" id="status-text">ONLINE</span>
                         </div>
+                        <button class="hdr-leave-btn" id="leave-btn" title="Leave room and return to lobby">⬅ LOBBY</button>
                     </div>
                 </header>
 
@@ -205,7 +379,28 @@
                         </div>
                     </div>
 
+                    <!-- Reply preview bar -->
+                    <div class="reply-preview-bar hidden" id="reply-preview-bar">
+                        <span class="reply-preview-icon">↳</span>
+                        <div class="reply-preview-content">
+                            <span class="reply-preview-username" id="reply-preview-username"></span>
+                            <span class="reply-preview-text" id="reply-preview-text"></span>
+                        </div>
+                        <button class="reply-preview-close" id="reply-preview-close" title="Cancel reply">✕</button>
+                    </div>
+
+                    <!-- Attachment preview bar -->
+                    <div class="attachment-preview-bar hidden" id="attachment-preview-bar">
+                        <span class="attachment-icon">📎</span>
+                        <span class="attachment-filename" id="attachment-filename">filename.png</span>
+                        <span class="attachment-filesize" id="attachment-filesize">(0 KB)</span>
+                        <button class="attachment-remove-btn" id="attachment-remove-btn" title="Remove attachment">✕</button>
+                    </div>
+
                     <div class="input-row">
+                        <input type="file" id="file-input" style="display: none;">
+                        <button class="attachment-toggle-btn" id="attachment-toggle-btn" title="Attach media/file">📎</button>
+                        <button class="voice-memo-btn" id="voice-memo-btn" title="Hold to record voice memo">🎤</button>
                         <button class="emoji-toggle-btn" id="emoji-toggle-btn" title="Emoji">☺</button>
                         <div class="pixel-input-wrap chat-input-wrap">
                             <span class="input-prompt">▸</span>
@@ -234,6 +429,131 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <!-- XP gain floating toasts -->
+    <div id="xp-toast-container" class="xp-toast-container"></div>
+
+    <!-- Feature Guide Modal -->
+    <div class="info-modal-overlay hidden" id="info-modal-overlay">
+        <div class="info-modal info-modal--tiled">
+
+            <div class="info-modal-header-row">
+                <div class="info-modal-title">[ PIXELCHAT — FEATURE GUIDE ]</div>
+                <button class="info-modal-x" id="info-modal-close" title="Close">✕</button>
+            </div>
+            <div class="info-modal-divider"></div>
+
+            <div class="info-tiles-grid">
+
+                <!-- Row 1: Mentions & Whispers — full width, horizontal inner layout -->
+                <div class="info-tile info-tile--full info-tile--horiz">
+                    <div class="info-tile-col">
+                        <div class="info-tile-title">💬 MENTIONS &amp; WHISPERS</div>
+                        <div class="info-tile-row">
+                            <span class="info-tile-icon">@</span>
+                            <div>
+                                <div class="info-tile-label">@MENTION</div>
+                                <div class="info-tile-sub">Type <code class="info-code">@username</code> to ping a player. Their bubble glows and they hear a sound.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="info-tile-col-divider"></div>
+                    <div class="info-tile-col">
+                        <div class="info-tile-title">🔮 WHISPER</div>
+                        <div class="info-tile-row">
+                            <span class="info-tile-icon">🔮</span>
+                            <div>
+                                <div class="info-tile-label">PRIVATE MESSAGE</div>
+                                <div class="info-tile-sub">Type <code class="info-code">/w @username</code> to send a private E2E-encrypted message.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2 left: XP Sources -->
+                <div class="info-tile">
+                    <div class="info-tile-title">⚔️ HOW TO EARN XP</div>
+                    <div class="info-xp-earn-table">
+                        <div class="info-xp-earn-row"><span>✉️ Send a message</span><span>+10</span></div>
+                        <div class="info-xp-earn-row"><span>📥 Receive a message</span><span>+2</span></div>
+                        <div class="info-xp-earn-row"><span>🔥 Every 10th msg (streak)</span><span>+25</span></div>
+                        <div class="info-xp-earn-row"><span>🏰 Create a room</span><span>+20</span></div>
+                        <div class="info-xp-earn-row"><span>🚪 Someone joins</span><span>+3</span></div>
+                        <div class="info-xp-earn-row"><span>⏱ Per minute in room</span><span>+5</span></div>
+                    </div>
+                </div>
+
+                <!-- Row 2 right: Rank Progression -->
+                <div class="info-tile">
+                    <div class="info-tile-title">📊 RANK PROGRESSION</div>
+                    <div class="info-rank-table">
+                        <div class="info-rank-row header"><span></span><span>RANK</span><span>XP</span></div>
+                        <div class="info-rank-row"><span>🌱</span><span>NEWBIE</span><span>0</span></div>
+                        <div class="info-rank-row"><span>🗡️</span><span>SQUIRE</span><span>200</span></div>
+                        <div class="info-rank-row"><span>🛡️</span><span>KNIGHT</span><span>600</span></div>
+                        <div class="info-rank-row"><span>🏆</span><span>CHAMPION</span><span>1,500</span></div>
+                        <div class="info-rank-row"><span>👑</span><span>WARLORD</span><span>4,000</span></div>
+                        <div class="info-rank-row legend"><span>⭐</span><span>LEGEND</span><span>10,000</span></div>
+                    </div>
+                    <p class="info-note">XP persists across sessions &amp; rooms.</p>
+                </div>
+
+                <!-- Row 3 left: Security Badges -->
+                <div class="info-tile">
+                    <div class="info-tile-title">🔐 SECURITY BADGES</div>
+                    <div class="info-tile-mini-list">
+                        <div class="info-tile-mini-row"><span>🔒✓</span><div><span class="info-tile-label">VERIFIED</span> — AES-GCM decrypted, ECDSA sig valid.</div></div>
+                        <div class="info-tile-mini-row"><span>⚠</span><div><span class="info-tile-label">SIG INVALID</span> — Could not verify sender.</div></div>
+                        <div class="info-tile-mini-row"><span>🚨</span><div><span class="info-tile-label">TAMPERED</span> — DB message was modified.</div></div>
+                    </div>
+                </div>
+
+                <!-- Row 3 right: Delivery Receipts -->
+                <div class="info-tile">
+                    <div class="info-tile-title">📬 DELIVERY RECEIPTS</div>
+                    <div class="info-tile-mini-list">
+                        <div class="info-tile-mini-row"><span>😴</span><div><span class="info-tile-label">SENT</span> — Reached server, no one else online.</div></div>
+                        <div class="info-tile-mini-row"><span>😃</span><div><span class="info-tile-label">PARTIAL</span> — Some players received it.</div></div>
+                        <div class="info-tile-mini-row"><span>😎</span><div><span class="info-tile-label">DELIVERED</span> — Everyone in room got it.</div></div>
+                    </div>
+                </div>
+
+            </div><!-- /.info-tiles-grid -->
+        </div>
+    </div>
+
+    <!-- In-App Retro Confirmation Modal -->
+    <div class="confirm-modal-overlay hidden" id="confirm-modal-overlay">
+        <div class="confirm-modal-box">
+            <div class="confirm-modal-header" id="confirm-modal-title">⚠️ CONFIRM ACTION</div>
+            <div class="confirm-modal-divider"></div>
+            <div class="confirm-modal-body" id="confirm-modal-text">Are you sure you want to perform this action?</div>
+            <div class="confirm-modal-actions">
+                <button class="pixel-btn btn-sm btn-secondary" id="confirm-modal-cancel">CANCEL</button>
+                <button class="pixel-btn btn-sm btn-danger" id="confirm-modal-confirm">PROCEED ►</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-App Retro Edit Message Modal -->
+    <div class="confirm-modal-overlay hidden" id="edit-modal-overlay">
+        <div class="confirm-modal-box">
+            <div class="confirm-modal-header">✏️ EDIT MESSAGE </div>
+            <div class="confirm-modal-divider"></div>
+            <div class="edit-modal-body">
+                <textarea class="edit-msg-textarea" id="edit-msg-input" rows="4" placeholder="Enter updated message..."></textarea>
+                <div class="edit-modal-hint">Messages can only be edited within 5 minutes of sending.</div>
+            </div>
+            <div class="confirm-modal-actions">
+                <button class="pixel-btn btn-sm btn-secondary" id="edit-modal-cancel">CANCEL</button>
+                <button class="pixel-btn btn-sm btn-warning" id="edit-modal-save">SAVE EDITS ►</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/config.js"></script>
+    <script src="/static/app.js?v=7"></script>
 </body>
+
+
+
 </html>
