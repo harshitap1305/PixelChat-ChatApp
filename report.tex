@@ -190,7 +190,7 @@ The system consists of four components deployed across four machines:
 \fbox{\parbox{0.85\textwidth}{\centering
 \vspace{0.5cm}
 \texttt{Load Generator} $\xrightarrow{\text{HTTP}}$
-\texttt{Sys1 (Load Balancer :8080)} $\xrightarrow{\text{Round-Robin}}$
+\texttt{Sys1 (Load Balancer :8082)} $\xrightarrow{\text{Round-Robin}}$
 $\begin{cases}
 \texttt{Sys2 (Backend-1 :8081)} \\
 \texttt{Sys3 (Backend-2 :8081)} \\
@@ -223,7 +223,7 @@ Insert architecture diagram or terminal showing all systems connected.
 \toprule
 \textbf{System} & \textbf{Role} & \textbf{SSH Command} & \textbf{Internal IP} & \textbf{Service Port} \\
 \midrule
-stu70\_sys1 & Load Balancer & \texttt{ssh -p 2237 student@10.1.75.53} & 172.17.0.38 & 8080 \\
+stu70\_sys1 & Load Balancer & \texttt{ssh -p 2237 student@10.1.75.53} & 172.17.0.38 & 8082 \\
 stu70\_sys2 & Backend-1     & \texttt{ssh -p 2238 student@10.1.75.53} & 172.17.0.39 & 8081 \\
 stu70\_sys3 & Backend-2     & \texttt{ssh -p 2239 student@10.1.75.53} & 172.17.0.40 & 8081 \\
 stu70\_sys4 & Backend-3     & \texttt{ssh -p 2240 student@10.1.75.53} & 172.17.0.41 & 8081 \\
@@ -383,7 +383,7 @@ proxy.ErrorHandler = func(rw http.ResponseWriter,
 \centering
 \fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
 \textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
-Insert screenshot of \texttt{curl http://SYS1:8080/lb/status} showing all backends alive.
+Insert screenshot of \texttt{curl http://SYS1:8082/lb/status} showing all backends alive.
 \vspace{2.5cm}}}
 \caption{Load Balancer \texttt{/lb/status} endpoint showing healthy backends}
 \label{fig:lb-status}
@@ -494,9 +494,9 @@ The messaging application server was deployed to all three backend systems using
   -backends http://172.17.0.39:8081,
             http://172.17.0.40:8081,
             http://172.17.0.41:8081 \
-  -port 8080
+  -port 8082
 \end{lstlisting}
-    \item Verify: \texttt{curl http://localhost:8080/lb/health}
+    \item Verify: \texttt{curl http://localhost:8082/lb/health}
 \end{enumerate}
 
 % ── SCREENSHOT PLACEHOLDER ──
@@ -505,7 +505,7 @@ The messaging application server was deployed to all three backend systems using
 \fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
 \textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
 Insert screenshot showing the load balancer starting up\\
-and confirming ``Load Balancer running on :8080''
+and confirming ``Load Balancer running on :8082''
 \vspace{2.5cm}}}
 \caption{Load Balancer startup on Sys1}
 \label{fig:lb-startup}
@@ -544,9 +544,9 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 \textbf{Configuration:} Load Balancer $\to$ Sys2 only
 
 \begin{lstlisting}[style=csvstyle, caption={Experiment 1 --- LB with single backend}]
-./load_balancer -backends http://172.17.0.39:8081 -port 8080
+./load_balancer -backends http://172.17.0.39:8081 -port 8082
 
-./load_generator -url 'http://localhost:8080/?delay=100ms' \
+./load_generator -url 'http://localhost:8082/?delay=100ms' \
     -requests 5000 -concurrency 200 -experiment 1_backend
 \end{lstlisting}
 
@@ -579,9 +579,9 @@ Insert screenshot of Experiment~1 terminal output showing\\
 
 \begin{lstlisting}[style=csvstyle, caption={Experiment 2 --- LB with three backends}]
 ./load_balancer -backends http://172.17.0.39:8081,\
-    http://172.17.0.40:8081,http://172.17.0.41:8081 -port 8080
+    http://172.17.0.40:8081,http://172.17.0.41:8081 -port 8082
 
-./load_generator -url 'http://localhost:8080/?delay=100ms' \
+./load_generator -url 'http://localhost:8082/?delay=100ms' \
     -requests 5000 -concurrency 200 -experiment 3_backends
 \end{lstlisting}
 
@@ -684,7 +684,7 @@ The messaging application from the previous group assignment has been connected 
 
 \begin{itemize}[leftmargin=2em]
     \item The back-end (\texttt{server.py}) runs on Sys2, Sys3, and Sys4 on port 8081.
-    \item The load balancer on Sys1 (port 8080) forwards requests to all three backends.
+    \item The load balancer on Sys1 (port 8082) forwards requests to all three backends.
     \item The messaging application's front-end URL now routes through the load balancer.
     \item WebSocket connections (\texttt{/ws}) and HTTP requests (\texttt{/}) are both proxied.
 \end{itemize}
@@ -696,7 +696,7 @@ The messaging application from the previous group assignment has been connected 
 \textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
 Insert screenshot of the messaging application\\
 being accessed through the load balancer URL\\
-(e.g., \texttt{http://SYS1:8080/})
+(e.g., \texttt{http://SYS1:8082/})
 \vspace{3cm}}}
 \caption{Messaging application accessed through the load balancer}
 \label{fig:messaging-integration}
