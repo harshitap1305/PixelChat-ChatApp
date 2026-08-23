@@ -1,0 +1,1 @@
+{"concurrency":200,"dropout_percent":29.7,"experiment":"1_backend","failed":1485,"p50_ms":605,"p95_ms":1296,"p99_ms":1745,"requests":5000,"successful":3515,"throughput_rps":236.46041765497284}

@@ -1,0 +1,723 @@
+\documentclass[12pt,a4paper]{article}
+
+% ── Packages ──
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+
+% ── Colors ──
+\definecolor{codeblue}{RGB}{0,102,204}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{linkblue}{RGB}{0,80,160}
+
+% ── Hyperlinks ──
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkblue,
+    urlcolor=linkblue,
+    citecolor=linkblue
+}
+
+% ── Code Listing Style ──
+\lstdefinestyle{gostyle}{
+    language=Go,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegreen}\itshape,
+    stringstyle=\color{red!70!black},
+    numberstyle=\tiny\color{codegray},
+    numbers=left,
+    numbersep=8pt,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codegray!50},
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+    xleftmargin=2em,
+    framexleftmargin=1.5em
+}
+
+\lstdefinestyle{pythonstyle}{
+    language=Python,
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegreen}\itshape,
+    stringstyle=\color{red!70!black},
+    numberstyle=\tiny\color{codegray},
+    numbers=left,
+    numbersep=8pt,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codegray!50},
+    breaklines=true,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+    xleftmargin=2em,
+    framexleftmargin=1.5em
+}
+
+\lstdefinestyle{csvstyle}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codegray!50},
+    breaklines=true,
+    captionpos=b,
+    xleftmargin=2em,
+    framexleftmargin=1.5em
+}
+
+\lstdefinestyle{jsonstyle}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{codegray!50},
+    breaklines=true,
+    captionpos=b,
+    xleftmargin=2em,
+    framexleftmargin=1.5em,
+    stringstyle=\color{red!70!black},
+    keywordstyle=\color{codeblue}
+}
+
+% ── Header/Footer ──
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Lab 5: Load Balanced Back-end}
+\fancyhead[R]{\small Sneha Nagmoti}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Section formatting ──
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+
+% ══════════════════════════════════════════════════════════════
+\begin{document}
+
+% ── Title Page ──
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+
+{\LARGE\bfseries Lab 5: Load Balanced Back-end\par}
+\vspace{0.5cm}
+{\large Distributed Systems Laboratory\par}
+
+\vspace{2cm}
+
+\begin{tabular}{rl}
+    \textbf{Student Name:} & Sneha Nagmoti \\[6pt]
+    \textbf{Roll Number:}  & 12342090 \\[6pt]
+    \textbf{Date:}         & August 24, 2026 \\[6pt]
+    \textbf{Course:}       & CS559: Computer Systems Design \\[6pt]
+    \textbf{GitHub Repo:}  & \url{https://github.com/snehanagmoti/group-chat-app} \\[6pt]
+    \textbf{Branch:}       & \texttt{sneha} \\
+\end{tabular}
+
+\vspace{1cm}
+\textit{Note: All code changes and implementation details for this assignment can be found in the \texttt{sneha} branch of the GitHub repository linked above.}
+
+\vspace{1cm}
+
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{System} & \textbf{Role} & \textbf{SSH Port} & \textbf{Internal IP} \\
+\hline
+stu70\_sys1 & Load Balancer   & 2237 & 172.17.0.38 \\
+stu70\_sys2 & Backend-1       & 2238 & 172.17.0.39 \\
+stu70\_sys3 & Backend-2       & 2239 & 172.17.0.40 \\
+stu70\_sys4 & Backend-3       & 2240 & 172.17.0.41 \\
+\hline
+\end{tabular}
+
+\vspace{0.5cm}
+{\small SSH Host: \texttt{10.1.75.53} \quad|\quad Username: \texttt{student}}
+
+\vfill
+\end{titlepage}
+
+% ── Table of Contents ──
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════
+\section{Introduction}
+
+This report documents the implementation and evaluation of a \textbf{load-balanced back-end} system for Lab~5. The objective is to distribute incoming HTTP requests across multiple back-end servers using a custom load balancer, and to measure and compare performance metrics under different configurations.
+
+\subsection{Objectives}
+\begin{enumerate}[leftmargin=2em]
+    \item Implement a reverse-proxy load balancer in Go on Sys1.
+    \item Deploy the messaging application back-end (from the previous assignment) on Sys2, Sys3, and Sys4.
+    \item Build a concurrent load generator to stress-test the system.
+    \item Measure performance with a single back-end (Sys2 only).
+    \item Measure performance with all three back-ends (Sys2, Sys3, Sys4).
+    \item Compare results and analyze the benefits of load balancing.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════
+\section{System Architecture}
+
+\subsection{Overview}
+
+The system consists of four components deployed across four machines:
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual architecture screenshot or keep this text diagram
+\fbox{\parbox{0.85\textwidth}{\centering
+\vspace{0.5cm}
+\texttt{Load Generator} $\xrightarrow{\text{HTTP}}$
+\texttt{Sys1 (Load Balancer :8080)} $\xrightarrow{\text{Round-Robin}}$
+$\begin{cases}
+\texttt{Sys2 (Backend-1 :8081)} \\
+\texttt{Sys3 (Backend-2 :8081)} \\
+\texttt{Sys4 (Backend-3 :8081)}
+\end{cases}$
+\vspace{0.5cm}
+}}
+\caption{System architecture: Load Generator $\to$ Load Balancer $\to$ Back-ends}
+\label{fig:architecture}
+\end{figure}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{3cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert architecture diagram or terminal showing all systems connected.
+\vspace{3cm}}}
+\caption{System architecture overview}
+\label{fig:arch-screenshot}
+\end{figure}
+
+\subsection{Assigned Systems}
+
+\begin{table}[H]
+\centering
+\caption{Assigned system details}
+\label{tab:systems}
+\begin{tabular}{lllll}
+\toprule
+\textbf{System} & \textbf{Role} & \textbf{SSH Command} & \textbf{Internal IP} & \textbf{Service Port} \\
+\midrule
+stu70\_sys1 & Load Balancer & \texttt{ssh -p 2237 student@10.1.75.53} & 172.17.0.38 & 8080 \\
+stu70\_sys2 & Backend-1     & \texttt{ssh -p 2238 student@10.1.75.53} & 172.17.0.39 & 8081 \\
+stu70\_sys3 & Backend-2     & \texttt{ssh -p 2239 student@10.1.75.53} & 172.17.0.40 & 8081 \\
+stu70\_sys4 & Backend-3     & \texttt{ssh -p 2240 student@10.1.75.53} & 172.17.0.41 & 8081 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ══════════════════════════════════════════════════════════════
+\section{Implementation}
+
+\subsection{Load Balancer (\texttt{load\_balancer.go})}
+
+The load balancer is written in Go and implements the following features:
+
+\begin{itemize}[leftmargin=2em]
+    \item \textbf{Round-Robin Scheduling} with health-aware backend selection
+    \item \textbf{Health Checking} --- periodic HTTP GET to \texttt{/health} on each backend
+    \item \textbf{Reverse Proxying} --- using Go's \texttt{httputil.NewSingleHostReverseProxy}
+    \item \textbf{Configurable Timeouts} --- \texttt{DialContext}, \texttt{ResponseHeaderTimeout}, and client-side timeout
+    \item \textbf{Monitoring Endpoints} --- \texttt{/lb/health}, \texttt{/lb/status}, \texttt{/lb/metrics}
+    \item \textbf{Error Handling} --- failed backends are marked unhealthy and skipped
+    \item \textbf{Metrics Collection} --- total, success, failed, backend errors, latency tracking
+    \item \textbf{Thread Safety} --- atomic operations for all shared counters
+\end{itemize}
+
+\subsubsection{Backend Structure}
+
+Each backend is represented as a struct with atomic fields for thread-safe concurrent access:
+
+\begin{lstlisting}[style=gostyle, caption={Backend and Metrics structs}]
+type Backend struct {
+    URL      *url.URL
+    Alive    atomic.Bool
+    InFlight atomic.Int64
+}
+
+type Metrics struct {
+    Total         atomic.Uint64
+    Success       atomic.Uint64
+    Failed        atomic.Uint64
+    BackendErrors atomic.Uint64
+    LatencyMu     sync.Mutex
+    Latencies     []time.Duration
+}
+
+type LoadBalancer struct {
+    backends  []*Backend
+    next      atomic.Uint64
+    metrics   *Metrics
+    transport http.RoundTripper
+}
+\end{lstlisting}
+
+\subsubsection{Round-Robin Selection}
+
+The load balancer uses an atomic counter to distribute requests evenly across healthy backends:
+
+\begin{lstlisting}[style=gostyle, caption={Round-robin backend selection with health awareness}]
+func (lb *LoadBalancer) nextBackend() *Backend {
+    n := len(lb.backends)
+    if n == 0 {
+        return nil
+    }
+    for i := 0; i < n; i++ {
+        index := lb.next.Add(1) % uint64(n)
+        b := lb.backends[index]
+        if b.Alive.Load() {
+            return b
+        }
+    }
+    return nil
+}
+\end{lstlisting}
+
+\subsubsection{Health Check Loop}
+
+A background goroutine periodically checks each backend's \texttt{/health} endpoint:
+
+\begin{lstlisting}[style=gostyle, caption={Periodic health checking}]
+func (lb *LoadBalancer) healthLoop(interval time.Duration) {
+    for {
+        for _, backend := range lb.backends {
+            healthURL := backend.URL.String() + "/health"
+            client := http.Client{Timeout: 2 * time.Second}
+            resp, err := client.Get(healthURL)
+            if err == nil && resp.StatusCode == http.StatusOK {
+                backend.Alive.Store(true)
+            } else {
+                backend.Alive.Store(false)
+            }
+            if resp != nil {
+                resp.Body.Close()
+            }
+        }
+        time.Sleep(interval)
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Timeout Configuration}
+
+The load balancer configures three levels of timeout using a shared \texttt{http.Transport}:
+
+\begin{lstlisting}[style=gostyle, caption={Shared transport with DialContext and ResponseHeader timeouts}]
+transport := &http.Transport{
+    DialContext: (&net.Dialer{
+        Timeout: backendTimeout,
+    }).DialContext,
+    ResponseHeaderTimeout: backendTimeout,
+    MaxIdleConns:          100,
+    MaxIdleConnsPerHost:   50,
+    IdleConnTimeout:       90 * time.Second,
+}
+\end{lstlisting}
+
+\subsubsection{Reverse Proxy and Error Handling}
+
+Each incoming request is forwarded to the selected backend via a reverse proxy. If the proxy fails, the backend is marked unhealthy:
+
+\begin{lstlisting}[style=gostyle, caption={Reverse proxy with error handling and metrics}]
+proxy := httputil.NewSingleHostReverseProxy(backend.URL)
+proxy.Transport = lb.transport
+
+proxyFailed := false
+
+proxy.ErrorHandler = func(rw http.ResponseWriter,
+        req *http.Request, err error) {
+    backend.Alive.Store(false)
+    lb.metrics.BackendErrors.Add(1)
+    lb.metrics.Failed.Add(1)
+    proxyFailed = true
+    http.Error(rw, "backend unavailable",
+        http.StatusBadGateway)
+}
+\end{lstlisting}
+
+\subsubsection{Monitoring Endpoints}
+
+\begin{table}[H]
+\centering
+\caption{Load Balancer monitoring endpoints}
+\label{tab:endpoints}
+\begin{tabular}{ll}
+\toprule
+\textbf{Endpoint} & \textbf{Purpose} \\
+\midrule
+\texttt{/lb/health}  & Check if the load balancer is alive \\
+\texttt{/lb/status}  & View all backends and their health status (JSON) \\
+\texttt{/lb/metrics} & View request counts and latency statistics (JSON) \\
+\texttt{/}           & Forward requests to a healthy backend \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert screenshot of \texttt{curl http://SYS1:8080/lb/status} showing all backends alive.
+\vspace{2.5cm}}}
+\caption{Load Balancer \texttt{/lb/status} endpoint showing healthy backends}
+\label{fig:lb-status}
+\end{figure}
+
+% ──────────────────────────────────────────────────────────────
+\subsection{Back-end Server (\texttt{server.py})}
+
+The back-end is the \textbf{FastAPI WebSocket messaging application} from the previous assignment, extended with:
+
+\begin{itemize}[leftmargin=2em]
+    \item \textbf{\texttt{/health} endpoint} --- returns \texttt{\{"status": "ok"\}} for load balancer health checks.
+    \item \textbf{Delay simulation} --- \texttt{/?delay=100ms} adds artificial processing delay using \texttt{asyncio.sleep()}.
+    \item \textbf{Failure simulation} --- \texttt{/?fail=true} returns HTTP 503.
+    \item \textbf{Load generator detection} --- returns JSON for test requests, HTML for browser clients.
+    \item \textbf{Configurable port} --- via the \texttt{PORT} environment variable (set to 8081).
+\end{itemize}
+
+\begin{lstlisting}[style=pythonstyle, caption={Health check endpoint added to the messaging server}]
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for the Load Balancer."""
+    return {"status": "ok"}
+\end{lstlisting}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert screenshot of backend health check response\\
+\texttt{curl http://172.17.0.39:8081/health}
+\vspace{2.5cm}}}
+\caption{Backend health check response}
+\label{fig:backend-health}
+\end{figure}
+
+% ──────────────────────────────────────────────────────────────
+\subsection{Load Generator (\texttt{load\_generator.go})}
+
+The load generator is a concurrent HTTP client written in Go that uses a worker pool pattern:
+
+\begin{itemize}[leftmargin=2em]
+    \item Accepts command-line flags: \texttt{-url}, \texttt{-requests}, \texttt{-concurrency}, \texttt{-timeout}, \texttt{-experiment}, \texttt{-out}, \texttt{-csv}
+    \item Creates $N$ concurrent goroutine workers consuming from a shared job channel
+    \item Records per-request latency for successful requests
+    \item Calculates: throughput (RPS), dropout percentage, p50/p95/p99 latency percentiles
+    \item Outputs results as JSON (per experiment) and CSV (cumulative)
+\end{itemize}
+
+\subsubsection{Metrics Formulas}
+
+\begin{align}
+\text{Throughput (RPS)} &= \frac{\text{Successful Requests}}{\text{Elapsed Time (seconds)}} \\[8pt]
+\text{Dropout (\%)} &= \frac{\text{Failed Requests}}{\text{Total Requests}} \times 100 \\[8pt]
+\text{p}N &= \text{Latency at index } \lfloor \text{len(sorted\_latencies)} \times \frac{N}{100} \rfloor
+\end{align}
+
+\begin{lstlisting}[style=gostyle, caption={Worker pool pattern in the load generator}]
+for i := 0; i < concurrency; i++ {
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        client := &http.Client{Timeout: timeout}
+        for range jobs {
+            reqStart := time.Now()
+            resp, err := client.Do(req)
+            if err != nil {
+                failCount.Add(1)
+                continue
+            }
+            io.Copy(io.Discard, resp.Body)
+            resp.Body.Close()
+            if resp.StatusCode == http.StatusOK {
+                successCount.Add(1)
+                latencies <- time.Since(reqStart)
+            } else {
+                failCount.Add(1)
+            }
+        }
+    }()
+}
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════
+\section{Deployment}
+
+\subsection{Backend Deployment (Sys2, Sys3, Sys4)}
+
+The messaging application server was deployed to all three backend systems using an automated Python script (\texttt{deploy\_and\_run.py}):
+
+\begin{enumerate}[leftmargin=2em]
+    \item SSH into each system (ports 2238, 2239, 2240)
+    \item Upload \texttt{server.py} and client files
+    \item Install dependencies: \texttt{pip3 install fastapi uvicorn websockets}
+    \item Start the server on port 8081: \texttt{PORT=8081 python3 server.py}
+    \item Verify health: \texttt{curl http://localhost:8081/health}
+\end{enumerate}
+
+\subsection{Load Balancer Deployment (Sys1)}
+
+\begin{enumerate}[leftmargin=2em]
+    \item Install Go: \texttt{sudo apt install golang-go}
+    \item Upload and build: \texttt{go build -o load\_balancer load\_balancer.go}
+    \item Start with backend URLs:
+\begin{lstlisting}[style=csvstyle]
+./load_balancer \
+  -backends http://172.17.0.39:8081,
+            http://172.17.0.40:8081,
+            http://172.17.0.41:8081 \
+  -port 8080
+\end{lstlisting}
+    \item Verify: \texttt{curl http://localhost:8080/lb/health}
+\end{enumerate}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert screenshot showing the load balancer starting up\\
+and confirming ``Load Balancer running on :8080''
+\vspace{2.5cm}}}
+\caption{Load Balancer startup on Sys1}
+\label{fig:lb-startup}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════
+\section{Experiments}
+
+\subsection{Experiment Parameters}
+
+Both experiments used identical parameters to ensure a fair comparison:
+
+\begin{table}[H]
+\centering
+\caption{Experiment configuration}
+\label{tab:params}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Total Requests      & 5,000 \\
+Concurrency         & 200 workers \\
+Simulated Delay     & 100ms per request (\texttt{?delay=100ms}) \\
+Client Timeout      & 3 seconds \\
+Backend Timeout (LB)& 500ms \\
+Health Check Interval & 1 second \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The simulated delay (\texttt{?delay=100ms}) models realistic backend processing time (e.g., database queries, computation). High concurrency (200 workers) creates contention that reveals the benefits of distributing load across multiple servers.
+
+% ──────────────────────────────────────────────────────────────
+\subsection{Experiment 1: Single Backend}
+
+\textbf{Configuration:} Load Balancer $\to$ Sys2 only
+
+\begin{lstlisting}[style=csvstyle, caption={Experiment 1 --- LB with single backend}]
+./load_balancer -backends http://172.17.0.39:8081 -port 8080
+
+./load_generator -url 'http://localhost:8080/?delay=100ms' \
+    -requests 5000 -concurrency 200 -experiment 1_backend
+\end{lstlisting}
+
+\textbf{LB Status:}
+\begin{lstlisting}[style=jsonstyle]
+{"backends":[{"url":"http://172.17.0.39:8081","alive":true}]}
+\end{lstlisting}
+
+\textbf{LB Metrics after experiment:}
+\begin{lstlisting}[style=jsonstyle]
+{"backend_errors":73, "failed":1485, "success":3515, "total":5000}
+\end{lstlisting}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert screenshot of Experiment~1 terminal output showing\\
+``Experiment 1\_backend finished in 14.86s''
+\vspace{2.5cm}}}
+\caption{Experiment 1: Single backend test execution}
+\label{fig:exp1-run}
+\end{figure}
+
+% ──────────────────────────────────────────────────────────────
+\subsection{Experiment 2: Three Backends}
+
+\textbf{Configuration:} Load Balancer $\to$ Sys2 + Sys3 + Sys4
+
+\begin{lstlisting}[style=csvstyle, caption={Experiment 2 --- LB with three backends}]
+./load_balancer -backends http://172.17.0.39:8081,\
+    http://172.17.0.40:8081,http://172.17.0.41:8081 -port 8080
+
+./load_generator -url 'http://localhost:8080/?delay=100ms' \
+    -requests 5000 -concurrency 200 -experiment 3_backends
+\end{lstlisting}
+
+\textbf{LB Status:}
+\begin{lstlisting}[style=jsonstyle]
+{"backends":[
+  {"url":"http://172.17.0.39:8081","alive":true},
+  {"url":"http://172.17.0.40:8081","alive":true},
+  {"url":"http://172.17.0.41:8081","alive":true}
+]}
+\end{lstlisting}
+
+\textbf{LB Metrics after experiment:}
+\begin{lstlisting}[style=jsonstyle]
+{"backend_errors":28, "failed":279, "success":4721, "total":5000}
+\end{lstlisting}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{2.5cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert screenshot of Experiment~2 terminal output showing\\
+``Experiment 3\_backends finished in 16.09s''
+\vspace{2.5cm}}}
+\caption{Experiment 2: Three backend test execution}
+\label{fig:exp2-run}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════
+\section{Results and Comparison}
+
+\subsection{Raw Results (results.csv)}
+
+\begin{lstlisting}[style=csvstyle, caption={Generated results.csv}]
+Experiment,Success,Failed,RPS,Dropout,p50,p95,p99
+1_backend,3515,1485,236.5,29.7%,605.0ms,1296.0ms,1745.0ms
+3_backends,4721,279,293.3,5.6%,602.0ms,1104.0ms,1498.0ms
+\end{lstlisting}
+
+\subsection{Comparison Table}
+
+\begin{table}[H]
+\centering
+\caption{Performance comparison: 1 Backend vs.\ 3 Backends}
+\label{tab:comparison}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Metric} & \textbf{1 Backend} & \textbf{3 Backends} & \textbf{Improvement} \\
+\midrule
+Successful Requests & 3,515        & 4,721        & +34.3\% \\
+Failed Requests     & 1,485        & 279          & $-$81.2\% \\
+Throughput (RPS)    & 236.5        & 293.3        & +24.0\% \\
+Dropout (\%)        & 29.7\%       & 5.6\%        & $-$24.1 pp \\
+p50 Latency         & 605 ms       & 602 ms       & $-$0.5\% \\
+p95 Latency         & 1,296 ms     & 1,104 ms     & $-$14.8\% \\
+p99 Latency         & 1,745 ms     & 1,498 ms     & $-$14.2\% \\
+Backend Errors      & 73           & 28           & $-$61.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Analysis}
+
+\begin{enumerate}[leftmargin=2em]
+
+\item \textbf{Throughput improved by 24\%.}
+With three backends, the load balancer distributes requests across three servers. Each server handles approximately one-third of the traffic, allowing more requests to be processed in parallel. Throughput increased from 236.5 to 293.3~RPS.
+
+\item \textbf{Failures reduced by 81\%.}
+The single backend received all 5,000 requests alone. Under heavy concurrency (200 workers), the backend became a bottleneck, causing 1,485 timeouts. With three backends, failures dropped to 279 --- an 81.2\% reduction.
+
+\item \textbf{Tail latency (p95, p99) significantly improved.}
+The p95 latency dropped from 1,296\,ms to 1,104\,ms ($-$14.8\%), and p99 from 1,745\,ms to 1,498\,ms ($-$14.2\%). This indicates that the worst-case request times improve substantially with load distribution.
+
+\item \textbf{Median latency (p50) remained stable.}
+The p50 latency was nearly identical (605\,ms vs.\ 602\,ms), which is expected because the simulated delay of 100\,ms dominates the typical request time regardless of backend count.
+
+\item \textbf{Backend errors dropped from 73 to 28.}
+With a single backend, high concurrency caused connection and timeout errors. Distributing the load reduced backend-level errors by 61.6\%.
+
+\end{enumerate}
+
+\subsection{Key Observation}
+
+Under suitable load, multiple healthy backends consistently provide:
+\begin{itemize}[leftmargin=2em]
+    \item Higher throughput
+    \item Lower overload-related failures
+    \item Better tail-latency performance
+    \item Reduced backend stress
+\end{itemize}
+
+These results confirm the fundamental advantage of load balancing in distributed systems.
+
+% ══════════════════════════════════════════════════════════════
+\section{Integration with Previous Assignment}
+
+The messaging application from the previous group assignment has been connected to the load-balanced back-end:
+
+\begin{itemize}[leftmargin=2em]
+    \item The back-end (\texttt{server.py}) runs on Sys2, Sys3, and Sys4 on port 8081.
+    \item The load balancer on Sys1 (port 8080) forwards requests to all three backends.
+    \item The messaging application's front-end URL now routes through the load balancer.
+    \item WebSocket connections (\texttt{/ws}) and HTTP requests (\texttt{/}) are both proxied.
+\end{itemize}
+
+% ── SCREENSHOT PLACEHOLDER ──
+\begin{figure}[H]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering\vspace{3cm}
+\textbf{[SCREENSHOT PLACEHOLDER]}\\[6pt]
+Insert screenshot of the messaging application\\
+being accessed through the load balancer URL\\
+(e.g., \texttt{http://SYS1:8080/})
+\vspace{3cm}}}
+\caption{Messaging application accessed through the load balancer}
+\label{fig:messaging-integration}
+\end{figure}
+
+% ══════════════════════════════════════════════════════════════
+\section{Full Load Balancer Code}
+\label{sec:fullcode}
+
+\lstinputlisting[style=gostyle, caption={Complete load\_balancer.go source code}]{load_balancer.go}
+
+% ══════════════════════════════════════════════════════════════
+\section{Conclusion}
+
+This lab successfully demonstrated the design, implementation, and evaluation of a load-balanced back-end system. Key accomplishments:
+
+\begin{enumerate}[leftmargin=2em]
+    \item Implemented a fully functional \textbf{Go reverse-proxy load balancer} with round-robin scheduling, health checking, configurable timeouts, and monitoring endpoints.
+    \item Deployed the \textbf{messaging application back-end} across three machines (Sys2, Sys3, Sys4).
+    \item Built a \textbf{concurrent load generator} that measures throughput, dropout, and latency percentiles.
+    \item Conducted controlled experiments comparing single vs.\ three backend performance.
+    \item Results confirm that load balancing provides \textbf{24\% higher throughput}, \textbf{81\% fewer failures}, and \textbf{15\% lower tail latency} under heavy load.
+\end{enumerate}
+
+\end{document}
