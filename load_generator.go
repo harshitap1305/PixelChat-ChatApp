@@ -20,6 +20,7 @@ func main() {
 	var concurrency int
 	var timeout time.Duration
 	var experiment string
+	var outFile string
 	var csvFile string
 
 	flag.StringVar(&url, "url", "", "Target URL (e.g., http://SYS1:8080/?delay=10ms)")
@@ -27,6 +28,7 @@ func main() {
 	flag.IntVar(&concurrency, "concurrency", 10, "Number of concurrent workers")
 	flag.DurationVar(&timeout, "timeout", 2*time.Second, "Request timeout")
 	flag.StringVar(&experiment, "experiment", "baseline", "Experiment name")
+	flag.StringVar(&outFile, "out", "", "Output JSON file (default: <experiment>.json)")
 	flag.StringVar(&csvFile, "csv", "results.csv", "CSV file to append results")
 	flag.Parse()
 
@@ -121,23 +123,35 @@ func main() {
 		"p99_ms":          p99,
 	}
 
-	jsonFile := fmt.Sprintf("%s.json", experiment)
-	file, _ := os.Create(jsonFile)
-	json.NewEncoder(file).Encode(result)
-	file.Close()
+	// Determine JSON output filename
+	jsonFile := outFile
+	if jsonFile == "" {
+		jsonFile = fmt.Sprintf("%s.json", experiment)
+	}
+	file, err := os.Create(jsonFile)
+	if err != nil {
+		log.Printf("Warning: could not create %s: %v", jsonFile, err)
+	} else {
+		json.NewEncoder(file).Encode(result)
+		file.Close()
+	}
 
 	// Append to CSV
 	csvExists := false
 	if _, err := os.Stat(csvFile); err == nil {
 		csvExists = true
 	}
-	f, _ := os.OpenFile(csvFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if !csvExists {
-		f.WriteString("Experiment,Success,Failed,RPS,Dropout,p50,p95,p99\n")
+	f, err := os.OpenFile(csvFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Warning: could not open %s: %v", csvFile, err)
+	} else {
+		if !csvExists {
+			f.WriteString("Experiment,Success,Failed,RPS,Dropout,p50,p95,p99\n")
+		}
+		f.WriteString(fmt.Sprintf("%s,%d,%d,%.1f,%.1f%%,%.1fms,%.1fms,%.1fms\n",
+			experiment, successful, failed, throughputRPS, dropoutPercent, p50, p95, p99))
+		f.Close()
 	}
-	f.WriteString(fmt.Sprintf("%s,%d,%d,%.1f,%.1f%%,%.1fms,%.1fms,%.1fms\n",
-		experiment, successful, failed, throughputRPS, dropoutPercent, p50, p95, p99))
-	f.Close()
 
 	fmt.Printf("Experiment %s finished in %v\n", experiment, elapsed)
 }

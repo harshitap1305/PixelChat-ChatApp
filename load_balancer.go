@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -30,9 +31,10 @@ type Metrics struct {
 }
 
 type LoadBalancer struct {
-	backends []*Backend
-	next     atomic.Uint64
-	metrics  *Metrics
+	backends  []*Backend
+	next      atomic.Uint64
+	metrics   *Metrics
+	transport http.RoundTripper
 }
 
 func (lb *LoadBalancer) nextBackend() *Backend {
@@ -97,9 +99,21 @@ func main() {
 		backends = append(backends, b)
 	}
 
+	// Shared transport with DialContext + ResponseHeader timeouts
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: backendTimeout,
+		}).DialContext,
+		ResponseHeaderTimeout: backendTimeout,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   50,
+		IdleConnTimeout:       90 * time.Second,
+	}
+
 	lb := &LoadBalancer{
-		backends: backends,
-		metrics:  &Metrics{},
+		backends:  backends,
+		metrics:   &Metrics{},
+		transport: transport,
 	}
 
 	go lb.healthLoop(healthInterval)
@@ -157,22 +171,24 @@ func main() {
 		defer backend.InFlight.Add(-1)
 
 		proxy := httputil.NewSingleHostReverseProxy(backend.URL)
-		
+
+		// Use the shared transport (with DialContext + ResponseHeader timeouts)
+		proxy.Transport = lb.transport
+
+		// Track whether the error handler fired to prevent double-counting
+		proxyFailed := false
+
 		proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
 			backend.Alive.Store(false)
 			lb.metrics.BackendErrors.Add(1)
 			lb.metrics.Failed.Add(1)
+			proxyFailed = true
 			http.Error(rw, "backend unavailable", http.StatusBadGateway)
 		}
-		
-		// Configure timeout
-		proxy.Transport = &http.Transport{
-			ResponseHeaderTimeout: backendTimeout,
-		}
 
-		// Use a custom response writer to capture success/failure based on status code
+		// Use a custom response writer to capture the status code
 		cw := &customResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-		
+
 		proxy.ServeHTTP(cw, r)
 
 		duration := time.Since(start)
@@ -180,15 +196,14 @@ func main() {
 		lb.metrics.Latencies = append(lb.metrics.Latencies, duration)
 		lb.metrics.LatencyMu.Unlock()
 
-		if cw.statusCode >= 500 {
-			// Already counted as failed in ErrorHandler if proxy failed, 
-			// but if backend returned 500+ directly, we might need to handle it.
-			// The slides count it as BackendError. We'll rely on the error handler mostly.
-			if cw.statusCode != http.StatusBadGateway {
+		// Only count success/fail if the error handler did NOT already handle it
+		if !proxyFailed {
+			if cw.statusCode >= 500 {
 				lb.metrics.Failed.Add(1)
+				lb.metrics.BackendErrors.Add(1)
+			} else {
+				lb.metrics.Success.Add(1)
 			}
-		} else {
-			lb.metrics.Success.Add(1)
 		}
 	})
 
