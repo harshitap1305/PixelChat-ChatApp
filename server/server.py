@@ -19,6 +19,7 @@ import hmac
 import hashlib
 import secrets
 import sqlite3
+import socket
 import string
 from datetime import datetime
 from pathlib import Path
@@ -27,7 +28,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import bcrypt
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -221,6 +223,13 @@ class ConnectionManager:
 # ── FastAPI App ───────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Secure Group Chat Server")
+
+@app.middleware("http")
+async def add_backend_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Backend"] = socket.gethostname()
+    return response
+
 manager = ConnectionManager()
 
 # Per-room cleanup tasks: room_id → asyncio.Task
@@ -244,8 +253,31 @@ FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", 3000))
 CLEANUP_TIMEOUT = int(os.environ.get("CLEANUP_TIMEOUT", 300))
 
 @app.get("/health")
-async def health_check():
+async def health_check(delay: str = None):
     """Lightweight endpoint used by the frontend to detect if the SSL cert is accepted."""
+    if delay:
+        try:
+            if delay.endswith("ms"):
+                await asyncio.sleep(int(delay[:-2]) / 1000.0)
+            elif delay.endswith("s"):
+                await asyncio.sleep(int(delay[:-1]))
+        except ValueError:
+            pass
+    return {"status": "ok"}
+
+@app.get("/")
+async def serve_index(delay: str = None, fail: str = None):
+    """Load balancer test endpoint."""
+    if fail == "true":
+        return JSONResponse(status_code=503, content={"error": "backend unavailable"})
+    if delay:
+        try:
+            if delay.endswith("ms"):
+                await asyncio.sleep(int(delay[:-2]) / 1000.0)
+            elif delay.endswith("s"):
+                await asyncio.sleep(int(delay[:-1]))
+        except ValueError:
+            pass
     return {"status": "ok"}
 
 # ── Session store ──────────────────────────────────────────────────────────

@@ -1,1 +1,1 @@
-{"concurrency":200,"dropout_percent":5.58,"experiment":"3_backends","failed":279,"p50_ms":602,"p95_ms":1104,"p99_ms":1498,"requests":5000,"successful":4721,"throughput_rps":293.30165865280054}
+{"concurrency":200,"dropout_percent":0.66,"experiment":"3_backends","failed":33,"p50_ms":398,"p95_ms":1198,"p99_ms":2695,"requests":5000,"successful":4967,"throughput_rps":371.76145945518874}

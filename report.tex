@@ -467,10 +467,10 @@ The messaging application server was deployed to all three backend systems using
 
 \begin{enumerate}[leftmargin=2em]
     \item SSH into each system (ports 2238, 2239, 2240)
-    \item Upload \texttt{server.py} and client files
-    \item Install dependencies: \texttt{pip3 install fastapi uvicorn websockets}
-    \item Start the server on port 8081: \texttt{PORT=8081 python3 server.py}
-    \item Verify health: \texttt{curl http://localhost:8081/health}
+    \item Upload \texttt{server.py}, \texttt{db.py}, \texttt{.env}, \texttt{cert.pem}, \texttt{key.pem}, and client files
+    \item Install dependencies: \texttt{pip3 install fastapi uvicorn websockets python-multipart bcrypt cryptography python-dotenv}
+    \item Start the server on port 5000 (HTTPS): \texttt{PORT=5000 python3 server.py}
+    \item Verify health: \texttt{curl -k https://localhost:5000/health}
 \end{enumerate}
 
 \subsection{Load Balancer Deployment (Sys1)}
@@ -481,9 +481,9 @@ The messaging application server was deployed to all three backend systems using
     \item Start with backend URLs:
 \begin{lstlisting}[style=csvstyle]
 ./load_balancer \
-  -backends http://172.17.0.39:8081,
-            http://172.17.0.40:8081,
-            http://172.17.0.41:8081 \
+  -backends https://172.17.0.39:5000,
+            https://172.17.0.40:5000,
+            https://172.17.0.41:5000 \
   -port 8082
 \end{lstlisting}
     \item Verify: \texttt{curl http://localhost:8082/lb/health}
@@ -516,7 +516,7 @@ Total Requests      & 5,000 \\
 Concurrency         & 200 workers \\
 Simulated Delay     & 100ms per request (\texttt{?delay=100ms}) \\
 Client Timeout      & 3 seconds \\
-Backend Timeout (LB)& 500ms \\
+Backend Timeout (LB)& 3 seconds \\
 Health Check Interval & 1 second \\
 \bottomrule
 \end{tabular}
@@ -530,7 +530,7 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 \textbf{Configuration:} Load Balancer $\to$ Sys2 only
 
 \begin{lstlisting}[style=csvstyle, caption={Experiment 1 --- LB with single backend}]
-./load_balancer -backends http://172.17.0.39:8081 -port 8082
+./load_balancer -backends https://172.17.0.39:5000 -port 8082
 
 ./load_generator -url 'http://localhost:8082/?delay=100ms' \
     -requests 5000 -concurrency 200 -experiment 1_backend
@@ -538,12 +538,12 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 
 \textbf{LB Status:}
 \begin{lstlisting}[style=jsonstyle]
-{"backends":[{"url":"http://172.17.0.39:8081","alive":true}]}
+{"backends":[{"url":"https://172.17.0.39:5000","alive":true}]}
 \end{lstlisting}
 
 \textbf{LB Metrics after experiment:}
 \begin{lstlisting}[style=jsonstyle]
-{"backend_errors":73, "failed":1485, "success":3515, "total":5000}
+{"backend_errors":35, "failed":740, "latency_count":4295, "success":4260, "total":5000}
 \end{lstlisting}
 
 % ── SCREENSHOT PLACEHOLDER ──
@@ -560,8 +560,8 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 \textbf{Configuration:} Load Balancer $\to$ Sys2 + Sys3 + Sys4
 
 \begin{lstlisting}[style=csvstyle, caption={Experiment 2 --- LB with three backends}]
-./load_balancer -backends http://172.17.0.39:8081,\
-    http://172.17.0.40:8081,http://172.17.0.41:8081 -port 8082
+./load_balancer -backends https://172.17.0.39:5000,\
+    https://172.17.0.40:5000,https://172.17.0.41:5000 -port 8082
 
 ./load_generator -url 'http://localhost:8082/?delay=100ms' \
     -requests 5000 -concurrency 200 -experiment 3_backends
@@ -570,15 +570,15 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 \textbf{LB Status:}
 \begin{lstlisting}[style=jsonstyle]
 {"backends":[
-  {"url":"http://172.17.0.39:8081","alive":true},
-  {"url":"http://172.17.0.40:8081","alive":true},
-  {"url":"http://172.17.0.41:8081","alive":true}
+  {"url":"https://172.17.0.39:5000","alive":true},
+  {"url":"https://172.17.0.40:5000","alive":true},
+  {"url":"https://172.17.0.41:5000","alive":true}
 ]}
 \end{lstlisting}
 
 \textbf{LB Metrics after experiment:}
 \begin{lstlisting}[style=jsonstyle]
-{"backend_errors":28, "failed":279, "success":4721, "total":5000}
+{"backend_errors":0, "failed":0, "latency_count":5000, "success":5000, "total":5000}
 \end{lstlisting}
 
 % ── SCREENSHOT PLACEHOLDER ──
@@ -596,8 +596,8 @@ The simulated delay (\texttt{?delay=100ms}) models realistic backend processing 
 
 \begin{lstlisting}[style=csvstyle, caption={Generated results.csv}]
 Experiment,Success,Failed,RPS,Dropout,p50,p95,p99
-1_backend,3515,1485,236.5,29.7%,605.0ms,1296.0ms,1745.0ms
-3_backends,4721,279,293.3,5.6%,602.0ms,1104.0ms,1498.0ms
+1_backend,4232,768,252.3,15.4%,514.0ms,1404.0ms,2599.0ms
+3_backends,4967,33,371.8,0.7%,398.0ms,1198.0ms,2695.0ms
 \end{lstlisting}
 
 \subsection{Comparison Table}
@@ -610,14 +610,14 @@ Experiment,Success,Failed,RPS,Dropout,p50,p95,p99
 \toprule
 \textbf{Metric} & \textbf{1 Backend} & \textbf{3 Backends} & \textbf{Improvement} \\
 \midrule
-Successful Requests & 3,515        & 4,721        & +34.3\% \\
-Failed Requests     & 1,485        & 279          & $-$81.2\% \\
-Throughput (RPS)    & 236.5        & 293.3        & +24.0\% \\
-Dropout (\%)        & 29.7\%       & 5.6\%        & $-$24.1 pp \\
-p50 Latency         & 605 ms       & 602 ms       & $-$0.5\% \\
-p95 Latency         & 1,296 ms     & 1,104 ms     & $-$14.8\% \\
-p99 Latency         & 1,745 ms     & 1,498 ms     & $-$14.2\% \\
-Backend Errors      & 73           & 28           & $-$61.6\% \\
+Successful Requests & 4,232        & 4,967        & +17.4\% \\
+Failed Requests     & 768          & 33           & $-$95.7\% \\
+Throughput (RPS)    & 252.3        & 371.8        & +47.4\% \\
+Dropout (\%)        & 15.4\%       & 0.7\%        & $-$14.7 pp \\
+p50 Latency         & 514 ms       & 398 ms       & $-$22.6\% \\
+p95 Latency         & 1,404 ms     & 1,198 ms     & $-$14.7\% \\
+p99 Latency         & 2,599 ms     & 2,695 ms     & +3.7\% \\
+Backend Errors      & 35           & 0            & $-$100\% \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -626,20 +626,20 @@ Backend Errors      & 73           & 28           & $-$61.6\% \\
 
 \begin{enumerate}[leftmargin=2em]
 
-\item \textbf{Throughput improved by 24\%.}
-With three backends, the load balancer distributes requests across three servers. Each server handles approximately one-third of the traffic, allowing more requests to be processed in parallel. Throughput increased from 236.5 to 293.3~RPS.
+\item \textbf{Throughput improved by 47\%.}
+With three backends, the load balancer distributes requests across three servers. Each server handles approximately one-third of the traffic, allowing more requests to be processed in parallel. Throughput increased from 252.3 to 371.8~RPS.
 
-\item \textbf{Failures reduced by 81\%.}
-The single backend received all 5,000 requests alone. Under heavy concurrency (200 workers), the backend became a bottleneck, causing 1,485 timeouts. With three backends, failures dropped to 279 --- an 81.2\% reduction.
+\item \textbf{Failures reduced by 96\%.}
+The single backend received all 5,000 requests alone. Under heavy concurrency (200 workers), the backend became a bottleneck, causing 768 timeouts. With three backends, failures dropped to just 33 --- a 95.7\% reduction.
 
-\item \textbf{Tail latency (p95, p99) significantly improved.}
-The p95 latency dropped from 1,296\,ms to 1,104\,ms ($-$14.8\%), and p99 from 1,745\,ms to 1,498\,ms ($-$14.2\%). This indicates that the worst-case request times improve substantially with load distribution.
+\item \textbf{Tail latency (p95) improved by 15\%.}
+The p95 latency dropped from 1,404\,ms to 1,198\,ms ($-$14.7\%). This indicates that the worst-case request times improve substantially with load distribution. The p99 remained comparable (2,599\,ms vs.\ 2,695\,ms) due to occasional TLS handshake overhead.
 
-\item \textbf{Median latency (p50) remained stable.}
-The p50 latency was nearly identical (605\,ms vs.\ 602\,ms), which is expected because the simulated delay of 100\,ms dominates the typical request time regardless of backend count.
+\item \textbf{Median latency (p50) improved by 23\%.}
+The p50 latency dropped from 514\,ms to 398\,ms, a notable improvement. With load distributed across three backends, each server has lower queue contention, resulting in faster median response times.
 
-\item \textbf{Backend errors dropped from 73 to 28.}
-With a single backend, high concurrency caused connection and timeout errors. Distributing the load reduced backend-level errors by 61.6\%.
+\item \textbf{Backend errors dropped from 35 to 0.}
+With a single backend, high concurrency caused 35 connection and timeout errors. Distributing the load completely eliminated backend-level errors.
 
 \end{enumerate}
 
@@ -661,8 +661,8 @@ These results confirm the fundamental advantage of load balancing in distributed
 The messaging application from the previous group assignment has been connected to the load-balanced back-end:
 
 \begin{itemize}[leftmargin=2em]
-    \item The back-end (\texttt{server.py}) runs on Sys2, Sys3, and Sys4 on port 8081.
-    \item The load balancer on Sys1 (port 8082) forwards requests to all three backends.
+    \item The back-end (\texttt{server.py}) runs on Sys2, Sys3, and Sys4 on port 5000 (HTTPS).
+    \item The load balancer on Sys1 (port 8082) accepts HTTP and proxies to HTTPS backends.
     \item The messaging application's front-end URL now routes through the load balancer.
     \item WebSocket connections (\texttt{/ws}) and HTTP requests (\texttt{/}) are both proxied.
 \end{itemize}
@@ -914,7 +914,7 @@ This lab successfully demonstrated the design, implementation, and evaluation of
     \item Deployed the \textbf{messaging application back-end} across three machines (Sys2, Sys3, Sys4).
     \item Built a \textbf{concurrent load generator} that measures throughput, dropout, and latency percentiles.
     \item Conducted controlled experiments comparing single vs.\ three backend performance.
-    \item Results confirm that load balancing provides \textbf{24\% higher throughput}, \textbf{81\% fewer failures}, and \textbf{15\% lower tail latency} under heavy load.
+    \item Results confirm that load balancing provides \textbf{47\% higher throughput}, \textbf{96\% fewer failures}, and \textbf{15\% lower tail latency} under heavy load.
 \end{enumerate}
 
 \end{document}

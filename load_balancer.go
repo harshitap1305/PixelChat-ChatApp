@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"crypto/tls"
 )
 
 type Backend struct {
@@ -56,7 +57,12 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 	for {
 		for _, backend := range lb.backends {
 			healthURL := backend.URL.String() + "/health"
-			client := http.Client{Timeout: 2 * time.Second}
+			client := http.Client{
+				Timeout: 2 * time.Second,
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}
 			resp, err := client.Get(healthURL)
 			if err == nil && resp.StatusCode == http.StatusOK {
 				backend.Alive.Store(true)
@@ -80,7 +86,7 @@ func main() {
 	flag.StringVar(&backendsFlag, "backends", "", "Comma-separated list of backend URLs")
 	flag.IntVar(&port, "port", 8080, "Port to run the load balancer on")
 	flag.DurationVar(&healthInterval, "health-interval", 1*time.Second, "Health check interval")
-	flag.DurationVar(&backendTimeout, "backend-timeout", 800*time.Millisecond, "Backend request timeout")
+	flag.DurationVar(&backendTimeout, "backend-timeout", 3*time.Second, "Backend request timeout")
 	flag.Parse()
 
 	if backendsFlag == "" {
@@ -102,12 +108,14 @@ func main() {
 	// Shared transport with DialContext + ResponseHeader timeouts
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout: backendTimeout,
+			Timeout: 2 * time.Second,
 		}).DialContext,
-		ResponseHeaderTimeout: backendTimeout,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   50,
-		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout:   backendTimeout,
+		TLSHandshakeTimeout:     2 * time.Second,
+		MaxIdleConns:            200,
+		MaxIdleConnsPerHost:     100,
+		IdleConnTimeout:         90 * time.Second,
+		TLSClientConfig:         &tls.Config{InsecureSkipVerify: true},
 	}
 
 	lb := &LoadBalancer{
@@ -207,7 +215,7 @@ func main() {
 		}
 	})
 
-	fmt.Printf("Load Balancer running on :%d\n", port)
+	fmt.Printf("Load Balancer running on http://localhost:%d\n", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), mux))
 }
 

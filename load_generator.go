@@ -26,7 +26,7 @@ func main() {
 	flag.StringVar(&url, "url", "", "Target URL (e.g., http://SYS1:8080/?delay=10ms)")
 	flag.IntVar(&totalRequests, "requests", 1000, "Total number of requests")
 	flag.IntVar(&concurrency, "concurrency", 10, "Number of concurrent workers")
-	flag.DurationVar(&timeout, "timeout", 2*time.Second, "Request timeout")
+	flag.DurationVar(&timeout, "timeout", 5*time.Second, "Request timeout")
 	flag.StringVar(&experiment, "experiment", "baseline", "Experiment name")
 	flag.StringVar(&outFile, "out", "", "Output JSON file (default: <experiment>.json)")
 	flag.StringVar(&csvFile, "csv", "results.csv", "CSV file to append results")
@@ -47,6 +47,13 @@ func main() {
 	
 	latencies := make(chan time.Duration, totalRequests)
 	
+	// Shared transport with connection pooling for all workers
+	sharedTransport := &http.Transport{
+		MaxIdleConns:          300,
+		MaxIdleConnsPerHost:   300,
+		IdleConnTimeout:       90 * time.Second,
+	}
+
 	var wg sync.WaitGroup
 	start := time.Now()
 
@@ -54,7 +61,10 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client := &http.Client{Timeout: timeout}
+			client := &http.Client{
+				Timeout:   timeout,
+				Transport: sharedTransport,
+			}
 			for range jobs {
 				reqStart := time.Now()
 				
