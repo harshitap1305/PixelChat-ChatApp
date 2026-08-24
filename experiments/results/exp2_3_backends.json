@@ -1,0 +1,26 @@
+{
+  "experiment": "3_Backends_Sys2_Sys3_Sys4",
+  "target_url": "http://127.0.0.1:8080",
+  "requests": 5000,
+  "concurrency": 40,
+  "successful": 5000,
+  "failed": 0,
+  "elapsed_time_sec": 0.241147292,
+  "throughput_rps": 20734.215833532977,
+  "dropout_percent": 0,
+  "p50_ms": 1.681,
+  "p95_ms": 3.903,
+  "p99_ms": 5.75,
+  "min_ms": 0.12,
+  "max_ms": 10.25,
+  "avg_ms": 1.8988,
+  "backend_distribution": {
+    "Sys2-Backend-1": 1666,
+    "Sys3-Backend-2": 1667,
+    "Sys4-Backend-3": 1667
+  },
+  "status_codes": {
+    "200": 5000
+  },
+  "timestamp": "2026-08-24T19:00:21+05:30"
+}

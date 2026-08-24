@@ -1,0 +1,24 @@
+{
+  "experiment": "1_Backend_Delayed_20ms",
+  "target_url": "http://127.0.0.1:8080?delay=20ms",
+  "requests": 1000,
+  "concurrency": 40,
+  "successful": 1000,
+  "failed": 0,
+  "elapsed_time_sec": 0.591692625,
+  "throughput_rps": 1690.066696369589,
+  "dropout_percent": 0,
+  "p50_ms": 23.544,
+  "p95_ms": 26.402,
+  "p99_ms": 27.784,
+  "min_ms": 20.542,
+  "max_ms": 29.102,
+  "avg_ms": 23.574,
+  "backend_distribution": {
+    "Sys2-Backend-1": 1000
+  },
+  "status_codes": {
+    "200": 1000
+  },
+  "timestamp": "2026-08-24T19:00:25+05:30"
+}

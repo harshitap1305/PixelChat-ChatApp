@@ -1,0 +1,25 @@
+{
+  "experiment": "3_Backends_Sys3_Killed_Failover",
+  "target_url": "http://127.0.0.1:8080",
+  "requests": 2000,
+  "concurrency": 40,
+  "successful": 2000,
+  "failed": 0,
+  "elapsed_time_sec": 0.09361175,
+  "throughput_rps": 21364.839349761114,
+  "dropout_percent": 0,
+  "p50_ms": 1.662,
+  "p95_ms": 3.754,
+  "p99_ms": 5.258,
+  "min_ms": 0.198,
+  "max_ms": 7.327,
+  "avg_ms": 1.8305,
+  "backend_distribution": {
+    "Sys2-Backend-1": 1000,
+    "Sys4-Backend-3": 1000
+  },
+  "status_codes": {
+    "200": 2000
+  },
+  "timestamp": "2026-08-24T19:00:36+05:30"
+}

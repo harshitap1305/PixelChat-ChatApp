@@ -1,0 +1,7 @@
+2026/08/24 19:00:33 =========================================================
+2026/08/24 19:00:33  🚀 Load Balancer running on 0.0.0.0:8080
+2026/08/24 19:00:33  🎯 Configured Backends (3 total): [http://127.0.0.1:8081 http://127.0.0.1:8082 http://127.0.0.1:8083]
+2026/08/24 19:00:33  ⏱️  Health Check Interval: 1s | Backend Timeout: 800ms
+2026/08/24 19:00:33  📊 Endpoints: /lb/health, /lb/status, /lb/metrics, /lb/reset
+2026/08/24 19:00:33 =========================================================
+2026/08/24 19:00:34 [HEALTH] Backend http://127.0.0.1:8082 became UNHEALTHY (error: Get "http://127.0.0.1:8082/health": read tcp 127.0.0.1:49651->127.0.0.1:8082: read: connection reset by peer)

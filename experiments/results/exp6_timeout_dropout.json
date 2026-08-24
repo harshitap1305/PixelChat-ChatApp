@@ -1,0 +1,23 @@
+{
+  "experiment": "1_Backend_Timeout_Dropout",
+  "target_url": "http://127.0.0.1:8080?delay=500ms",
+  "requests": 100,
+  "concurrency": 10,
+  "successful": 0,
+  "failed": 100,
+  "elapsed_time_sec": 0.311635875,
+  "throughput_rps": 0,
+  "dropout_percent": 100,
+  "p50_ms": 0.207,
+  "p95_ms": 308.429,
+  "p99_ms": 308.75,
+  "min_ms": 0.107,
+  "max_ms": 308.75,
+  "avg_ms": 31,
+  "backend_distribution": {},
+  "status_codes": {
+    "502": 10,
+    "503": 90
+  },
+  "timestamp": "2026-08-24T19:01:14+05:30"
+}
