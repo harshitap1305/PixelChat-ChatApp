@@ -1,0 +1,12 @@
+{
+  "experiment": "three_backends",
+  "requests": 5000,
+  "concurrency": 40,
+  "successful": 4994,
+  "failed": 6,
+  "throughput_rps": 135.0414595411608,
+  "dropout_percent": 0.12,
+  "p50_ms": 296,
+  "p95_ms": 514,
+  "p99_ms": 979
+}

@@ -1,0 +1,12 @@
+{
+  "experiment": "single_backend",
+  "requests": 5000,
+  "concurrency": 40,
+  "successful": 4151,
+  "failed": 849,
+  "throughput_rps": 134.21133360472936,
+  "dropout_percent": 16.98,
+  "p50_ms": 273,
+  "p95_ms": 578,
+  "p99_ms": 706
+}
