@@ -47,9 +47,9 @@ if [ -n "$DB_PROXY_URL" ]; then
     cp server/db_client.py "$TMPDIR_SHIM/db.py"
 
     # Run server.py with the shim at the front of the Python path
-    PYTHONPATH="$TMPDIR_SHIM:${PYTHONPATH:-}" python3 server/server.py
+    PYTHONPATH="$TMPDIR_SHIM:${PYTHONPATH:-}" python3 -m server.server
 else
     echo "  DB mode: LOCAL SQLite at ${DB_PATH:-server/chat.db}"
     echo "========================================================"
-    python3 server/server.py
+    python3 -m server.server
 fi
