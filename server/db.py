@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS rooms (
     is_public   INTEGER NOT NULL DEFAULT 1,       -- 1=public (browsable), 0=private (code-only)
     avatar      TEXT    NOT NULL DEFAULT '🏰'
 );
+
+CREATE TABLE IF NOT EXISTS session_tokens (
+    token       TEXT    PRIMARY KEY,
+    username    TEXT    NOT NULL,
+    avatar      TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL
+);
 """
 
 # ── Migration helpers ─────────────────────────────────────────────────────────
@@ -575,4 +582,32 @@ def clear_history() -> None:
         conn.execute("DELETE FROM messages")
         conn.execute("DELETE FROM user_keys")
     print("[DB] All message history and user keys cleared.")
+
+
+# ── Session Tokens (Global State) ─────────────────────────────────────────────
+
+def save_session_token(token: str, username: str, avatar: str) -> None:
+    """Store a one-time session token in the DB so any backend can read it."""
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO session_tokens (token, username, avatar, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (token, username, avatar, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+
+
+def consume_session_token(token: str) -> dict | None:
+    """Read a token and immediately delete it (one-time use)."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT username, avatar FROM session_tokens WHERE token = ?",
+            (token,),
+        ).fetchone()
+        if row:
+            conn.execute("DELETE FROM session_tokens WHERE token = ?", (token,))
+            return {"username": row["username"], "avatar": row["avatar"]}
+    return None
+
 

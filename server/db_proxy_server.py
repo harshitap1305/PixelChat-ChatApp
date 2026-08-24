@@ -262,6 +262,24 @@ def api_get_user_xp(username: str):
     return {"result": result}
 
 
+# ── Session Tokens ────────────────────────────────────────────────────────────
+
+class SaveTokenBody(BaseModel):
+    token:    str
+    username: str
+    avatar:   str
+
+@app.post("/db/save_session_token")
+def api_save_session_token(body: SaveTokenBody):
+    db.save_session_token(body.token, body.username, body.avatar)
+    return {"ok": True}
+
+@app.get("/db/consume_session_token/{token}")
+def api_consume_session_token(token: str):
+    result = db.consume_session_token(token)
+    return {"result": result}
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ import hashlib
 import secrets
 import sqlite3
 import string
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
@@ -252,11 +253,6 @@ async def health_check():
     """Lightweight endpoint used by the frontend to detect if the SSL cert is accepted."""
     return {"status": "ok"}
 
-# ── Session store ──────────────────────────────────────────────────────────
-# Maps one-time token → { username, avatar }
-# Tokens are issued by /register and /login, consumed once by the WebSocket join.
-active_sessions: dict[str, dict] = {}
-
 
 # ── Request models ──────────────────────────────────────────────────────────
 
@@ -320,7 +316,7 @@ async def register(req: RegisterRequest):
         raise HTTPException(status_code=409, detail=f"Username '{username}' is already taken.")
 
     token = secrets.token_hex(32)
-    active_sessions[token] = {"username": username, "avatar": avatar}
+    db.save_session_token(token, username, avatar)
     print(f"\033[92m[REGISTER SUCCESS] 🎉 New user '@{username}' registered | Avatar: {avatar} | Password hashed with bcrypt | Session token issued: {token[:8]}...\033[0m")
     return {"token": token, "username": username, "avatar": avatar, "xp": 0}
 
@@ -344,7 +340,7 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     token = secrets.token_hex(32)
-    active_sessions[token] = {"username": user["username"], "avatar": user["avatar"]}
+    db.save_session_token(token, user["username"], user["avatar"])
     print(f"\033[92m[AUTH SUCCESS] 🔑 Password verified for '@{user['username']}' (bcrypt hash match) | Session token issued: {token[:8]}...\033[0m")
     return {"token": token, "username": user["username"], "avatar": user["avatar"], "xp": user.get("xp", 0)}
 
@@ -365,7 +361,10 @@ async def refresh_token(req: RefreshTokenRequest):
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
     token = secrets.token_hex(32)
-    active_sessions[token] = {"username": user["username"], "avatar": user["avatar"]}
+    
+    # Store token in the global DB so any backend can read it for the WebSocket handshake
+    db.save_session_token(token, user["username"], user["avatar"])
+    
     print(f"[Auth] Token refreshed for: {user['username']}")
     return {"token": token, "username": user["username"], "avatar": user["avatar"], "xp": user.get("xp", 0)}
 
@@ -545,10 +544,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # ── Token-based auth ─────────────────────────────────────────────
         token   = data.get("token", "").strip()
-        pub_key = data.get("public_key")
         room_id = data.get("room_id", "").strip().upper()
 
-        session = active_sessions.pop(token, None)  # consume token (one-time use)
+        # 1. Validate token from the global DB
+        session = db.consume_session_token(token)
         if not session:
             await websocket.send_json({
                 "type":    "error",
@@ -556,6 +555,9 @@ async def websocket_endpoint(websocket: WebSocket):
             })
             await websocket.close(code=1008)
             return
+
+        username = session["username"]
+        avatar   = session["avatar"]
 
         # ── Validate room ─────────────────────────────────────────────────
         if not room_id:
@@ -575,8 +577,7 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close(code=1008)
             return
 
-        username = session["username"]
-        avatar   = session["avatar"]
+        pub_key = data.get("public_key")
 
         # If room creator is currently 'system' or empty, assign it to the joiner
         db.update_room_creator_if_system(room_id, username)

@@ -188,7 +188,17 @@ def get_user_xp(username: str) -> int:
     return _get(f"/db/get_user_xp/{username}")["result"]
 
 
+# ── Session Tokens ────────────────────────────────────────────────────────────
+
+def save_session_token(token: str, username: str, avatar: str) -> None:
+    _post("/db/save_session_token", {"token": token, "username": username, "avatar": avatar})
+
+def consume_session_token(token: str) -> dict | None:
+    return _get(f"/db/consume_session_token/{token}")["result"]
+
+
 # ── Legacy / unused on clients ────────────────────────────────────────────────
+
 
 def clear_history() -> None:
     """No-op on clients — only Sys2 can clear all history."""
