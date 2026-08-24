@@ -221,16 +221,16 @@ curl -k https://10.1.75.51:6270/health
 
 Run from your **local PC** or from **Sys1** in a separate tmux pane.
 
-### Experiment 1 — Single Backend (bypasses LB, hits Sys2 directly)
+### Experiment 1 — Single Backend (bypasses LB, hits Sys3 directly)
 
 ```bash
 cd ~/group-chat-app/load_generator
 ./load_generator \
-  -url         https://10.1.75.51:5270 \
-  -requests    5000 \
-  -concurrency 40 \
+  -url         https://10.1.75.51:5271 \
+  -requests    2000 \
+  -concurrency 50 \
   -experiment  single_backend \
-  -path        /health \
+  -path        /rooms \
   -out         ./results
 ```
 
@@ -239,10 +239,10 @@ cd ~/group-chat-app/load_generator
 ```bash
 ./load_generator \
   -url         https://10.1.75.51:5269 \
-  -requests    5000 \
-  -concurrency 40 \
+  -requests    2000 \
+  -concurrency 50 \
   -experiment  three_backends \
-  -path        /health \
+  -path        /rooms \
   -out         ./results
 ```
 
