@@ -226,8 +226,12 @@ manager = ConnectionManager()
 # Per-room cleanup tasks: room_id → asyncio.Task
 cleanup_tasks: dict[str, asyncio.Task] = {}
 
-# Uploads directory
-UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"
+# UPLOAD_DIR can be overridden via environment variable so that Sys3 and Sys4
+# share the same uploads folder as Sys2 via sshfs:
+#   UPLOAD_DIR=/mnt/sys2-server/uploads
+UPLOAD_DIR = Path(
+    os.environ.get("UPLOAD_DIR", str(Path(__file__).resolve().parent / "uploads"))
+)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 

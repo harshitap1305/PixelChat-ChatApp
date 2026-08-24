@@ -18,7 +18,12 @@ from datetime import datetime
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DB_PATH = Path(__file__).resolve().parent / "chat.db"
+# DB_PATH can be overridden via environment variable so that Sys3 and Sys4
+# can point to Sys2's database mounted via sshfs:
+#   DB_PATH=/mnt/sys2-server/chat.db
+DB_PATH = Path(
+    os.environ.get("DB_PATH", str(Path(__file__).resolve().parent / "chat.db"))
+)
 
 # HMAC_SECRET loaded from environment (set in .env, never hardcoded)
 def _get_hmac_secret() -> bytes:
@@ -135,7 +140,12 @@ def init_db() -> None:
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # WAL mode allows multiple readers + one writer concurrently.
+    # This is critical when Sys3 and Sys4 access the same chat.db via sshfs.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")  # wait up to 5 s if locked
     return conn
+
 
 
 # ── HMAC helpers ──────────────────────────────────────────────────────────────
