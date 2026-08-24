@@ -1,3 +1,5 @@
 experiment,requests,concurrency,successful,failed,throughput_rps,dropout_percent,p50_ms,p95_ms,p99_ms
 single_backend,5000,40,4151,849,134.21,16.98,273.0,578.0,706.0
 three_backends,5000,40,4994,6,135.04,0.12,296.0,514.0,979.0
+single_backend,5000,40,3827,1173,125.03,23.46,286.0,575.0,1521.0
+three_backends,5000,40,4996,4,130.27,0.08,301.0,591.0,711.0

@@ -2,11 +2,11 @@
   "experiment": "three_backends",
   "requests": 5000,
   "concurrency": 40,
-  "successful": 4994,
-  "failed": 6,
-  "throughput_rps": 135.0414595411608,
-  "dropout_percent": 0.12,
-  "p50_ms": 296,
-  "p95_ms": 514,
-  "p99_ms": 979
+  "successful": 4996,
+  "failed": 4,
+  "throughput_rps": 130.27331560230553,
+  "dropout_percent": 0.08,
+  "p50_ms": 301,
+  "p95_ms": 591,
+  "p99_ms": 711
 }
