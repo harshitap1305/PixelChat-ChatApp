@@ -161,14 +161,12 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 
 // makeTransport creates an HTTP transport that skips TLS verification.
 // This is needed because the Python backends use self-signed certificates.
-func makeTransport(timeout time.Duration) *http.Transport {
-	return &http.Transport{
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
-		ResponseHeaderTimeout: timeout,
-		MaxIdleConns:          500,
-		MaxIdleConnsPerHost:   500,
-		IdleConnTimeout:       90 * time.Second,
-	}
+var globalTransport = &http.Transport{
+	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
+	ResponseHeaderTimeout: 10 * time.Second,
+	MaxIdleConns:          500,
+	MaxIdleConnsPerHost:   500,
+	IdleConnTimeout:       90 * time.Second,
 }
 
 // serveRequest is the main HTTP handler — picks a backend and proxies the request.
@@ -191,7 +189,7 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 	var proxyFailed atomic.Bool
 
 	proxy := httputil.NewSingleHostReverseProxy(b.URL)
-	proxy.Transport = makeTransport(10 * time.Second) // Match client timeout (or slightly higher)
+	proxy.Transport = globalTransport
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
 		proxyFailed.Store(true)
