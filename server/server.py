@@ -46,6 +46,12 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidSignature
 import psutil
 import time as _time
+import sys
+import os
+
+# Add the server directory to sys.path so local modules (feed_store, db) resolve
+# when running as a module (-m server.server)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import db  # local module — server/db.py
 import feed_store # Valkey-based feed store

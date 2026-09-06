@@ -50,6 +50,9 @@ Browser → https://10.1.75.51:3269
 ## Prerequisites (all machines)
 
 ```bash
+# System dependencies (for the Valkey/Redis binary)
+sudo apt update && sudo apt install redis-server -y
+
 # Python deps
 pip install -r server/requirements.txt
 pip install valkey psutil
@@ -135,8 +138,8 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-2
 DB_PROXY_URL=https://10.1.75.51:6270
-VALKEY_HOST=10.1.75.51  # Sys2's IP
-VALKEY_PORT=4270        # Sys2's Valkey Primary external port
+VALKEY_HOST=10.1.75.51
+VALKEY_PORT=4270
 VALKEY_REPLICA_HOST=127.0.0.1
 VALKEY_REPLICA_PORT=4000
 ```
@@ -168,8 +171,8 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-3
 DB_PROXY_URL=https://10.1.75.51:6270
-VALKEY_HOST=10.1.75.51  # Sys2's IP
-VALKEY_PORT=4270        # Sys2's Valkey Primary external port
+VALKEY_HOST=10.1.75.51
+VALKEY_PORT=4270
 VALKEY_REPLICA_HOST=127.0.0.1
 VALKEY_REPLICA_PORT=4000
 ```
