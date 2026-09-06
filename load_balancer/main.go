@@ -185,24 +185,9 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 	b.IncrementInFlight()
 	defer b.DecrementInFlight()
 
-	// Track whether the error handler fired
-	var proxyFailed atomic.Bool
+	b.proxy.ServeHTTP(w, r)
 
-	proxy := httputil.NewSingleHostReverseProxy(b.URL)
-	proxy.Transport = globalTransport
-
-	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
-		proxyFailed.Store(true)
-		log.Printf("[ERROR] Backend %s error: %v", b.URL, err)
-		// REMOVED: b.SetAlive(false) -> Do not instantly kill a backend on a single timeout!
-		lb.metrics.BackendErrors.Add(1)
-		lb.metrics.Failed.Add(1)
-		http.Error(rw, `{"error":"backend unavailable"}`, http.StatusBadGateway)
-	}
-
-	proxy.ServeHTTP(w, r)
-
-	if !proxyFailed.Load() {
+	if r.Header.Get("X-Proxy-Failed") != "true" {
 		elapsed := time.Since(start)
 		lb.metrics.Success.Add(1)
 		lb.metrics.RecordLatency(elapsed)
@@ -308,6 +293,20 @@ func main() {
 	}
 
 	lb := &LoadBalancer{backends: backends}
+
+	for _, b := range lb.backends {
+		p := httputil.NewSingleHostReverseProxy(b.URL)
+		p.Transport = globalTransport
+		bBackend := b
+		p.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
+			req.Header.Set("X-Proxy-Failed", "true")
+			log.Printf("[ERROR] Backend %s error: %v", bBackend.URL, err)
+			lb.metrics.BackendErrors.Add(1)
+			lb.metrics.Failed.Add(1)
+			http.Error(rw, `{"error":"backend unavailable"}`, http.StatusBadGateway)
+		}
+		b.proxy = p
+	}
 
 	// ── Start health checker ───────────────────────────────────────────────
 	go lb.healthLoop(*healthInterval)

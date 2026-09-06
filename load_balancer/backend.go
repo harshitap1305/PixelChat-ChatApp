@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http/httputil"
 	"net/url"
 	"sync/atomic"
 )
@@ -20,6 +21,7 @@ type Backend struct {
 	overloaded atomic.Bool
 	loadScore  atomic.Value // stores float64
 	inFlight   atomic.Int64
+	proxy      *httputil.ReverseProxy
 }
 
 // IsAlive returns the current health status.
