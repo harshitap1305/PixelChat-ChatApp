@@ -29,6 +29,7 @@ Usage examples:
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/csv"
 	"encoding/json"
@@ -70,11 +71,12 @@ type ExperimentResult struct {
 
 // ── Workers ───────────────────────────────────────────────────────────────────
 
-// worker pulls job indices from jobs channel and sends HTTP GET requests.
+// worker pulls job indices from jobs channel and sends HTTP requests.
 func worker(
 	id int,
 	targetURL string,
 	path string,
+	mode string,
 	client *http.Client,
 	jobs <-chan int,
 	results chan<- requestResult,
@@ -85,9 +87,18 @@ func worker(
 	defer wg.Done()
 	fullURL := targetURL + path
 
-	for range jobs {
+	for i := range jobs {
 		start := time.Now()
-		resp, err := client.Get(fullURL)
+		var resp *http.Response
+		var err error
+
+		if mode == "message" {
+			payload := []byte(fmt.Sprintf(`{"client-name": "load-tester-%d", "msg": "Load test message %d"}`, id, i))
+			resp, err = client.Post(fullURL, "application/json", bytes.NewBuffer(payload))
+		} else {
+			resp, err = client.Get(fullURL)
+		}
+
 		latency := time.Since(start)
 
 		success := false
@@ -184,7 +195,11 @@ func main() {
 	outDir := flag.String("out", ".",
 		"Directory for output JSON and CSV files.")
 	path := flag.String("path", "/health",
-		"HTTP path to request on the target (e.g. /health or /rooms).")
+		"HTTP path to request on the target (e.g. /health or /message).")
+	mode := flag.String("mode", "health",
+		"Mode: 'health' (GET) or 'message' (POST)")
+	pollLB := flag.Bool("poll-lb", false,
+		"If true, query LB status/metrics periodically")
 	flag.Parse()
 
 	// Validate
@@ -226,7 +241,23 @@ func main() {
 	// Launch workers
 	for i := 0; i < *concurrency; i++ {
 		wg.Add(1)
-		go worker(i+1, *targetURL, *path, client, jobs, results, &wg, &done, *requests)
+		go worker(i+1, *targetURL, *path, *mode, client, jobs, results, &wg, &done, *requests)
+	}
+
+	if *pollLB {
+		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			for {
+				<-ticker.C
+				resp, err := client.Get(*targetURL + "/lb/status")
+				if err == nil {
+					var s map[string]interface{}
+					json.NewDecoder(resp.Body).Decode(&s)
+					log.Printf("[POLL] LB Status: %v", s)
+					resp.Body.Close()
+				}
+			}
+		}()
 	}
 
 	// Send jobs

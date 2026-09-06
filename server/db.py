@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS messages (
     attachment    TEXT    DEFAULT NULL           -- JSON string of attachment data
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_msg_id 
+    ON messages(msg_id) WHERE msg_id != '';
+
 CREATE TABLE IF NOT EXISTS user_keys (
     username    TEXT PRIMARY KEY,
     public_key  TEXT NOT NULL        -- JSON JWK
@@ -120,6 +123,12 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     if "attachment" not in columns:
         conn.execute("ALTER TABLE messages ADD COLUMN attachment TEXT DEFAULT NULL")
         print("[DB] Migration: added attachment column to messages")
+        
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_msg_id ON messages(msg_id) WHERE msg_id != ''")
+        print("[DB] Migration: added UNIQUE index on msg_id")
+    except Exception:
+        pass
 
     cursor = conn.execute("PRAGMA table_info(users)")
     columns = {row[1] for row in cursor.fetchall()}
@@ -277,7 +286,7 @@ def save_message(
     with _connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO messages
+            INSERT OR IGNORE INTO messages
                 (room_id, msg_id, username, avatar, ciphertext, iv, signature, public_key,
                  timestamp, hmac_digest, sig_valid, reply_to, target_user, is_edited, created_at_ts, attachment)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)

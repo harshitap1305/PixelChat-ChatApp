@@ -5,3 +5,5 @@ python-multipart
 cryptography
 bcrypt
 requests
+valkey
+psutil

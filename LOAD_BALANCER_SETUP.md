@@ -1,20 +1,20 @@
-# Load Balancer — Deployment Guide
+# Load Balancer & Valkey — Deployment Guide
 
 ## System Overview
 
 | Machine | Role | Internal Port | External Port | Notes |
 |---------|------|:---:|:---:|------|
 | **Sys1** | Frontend + Go Load Balancer | `3000` / `5000` | `3269` / `5269` | Your machine |
-| **Sys2** | Python Backend-1 + **DB Host** + DB Proxy | `5000` / `6000` | `5270` / `6270` | Hosts `chat.db` |
-| **Sys3** | Python Backend-2 | `5000` | `5271` | Points to Sys2 DB |
-| **Sys4** | Python Backend-3 | `5000` | `5272` | Points to Sys2 DB |
+| **Sys2** | Backend-1 + **DB Host** + DB Proxy + **Valkey Primary** | `5000` / `6000` / `6379` | `5270` / `6270` / `6379` | Hosts `chat.db` and Valkey Primary |
+| **Sys3** | Backend-2 + **Valkey Replica** | `5000` / `6379` | `5271` / `6379` | Points to Sys2 DB and Valkey Primary |
+| **Sys4** | Backend-3 + **Valkey Replica** | `5000` / `6379` | `5272` / `6379` | Points to Sys2 DB and Valkey Primary |
 | **Local PC** | Load Generator | — | — | Sends load to LB |
 
 **Shared IP:** `10.1.75.51`
 
-> **DB Proxy** — instead of sshfs, Sys2 runs a small HTTP service (`db_proxy_server.py`)
-> that exposes the SQLite database over HTTPS. Sys3 and Sys4 call it like a regular API.
-> No filesystem mounts. No SSH tunnels. Just HTTP.
+> **Storage Separation**: 
+> - **SQLite** (via DB Proxy on Sys2): Used for auth, users, rooms, and XP.
+> - **Valkey** (In-Memory on Sys2/3/4): Used for the high-volume chat messages. Sys2 runs the primary (for writes), while Sys3 and Sys4 run replicas (for local reads).
 
 ---
 
@@ -27,7 +27,7 @@ Browser → https://10.1.75.51:3269
               ▼
     ┌─────────────────────────┐
     │   Go Load Balancer      │  ← Sys1, internal :5000, external :5269
-    │   Round-Robin + Health  │
+    │   P2C + Health Routing  │
     └──────┬──────────┬───────┘
            │          │          │
            ▼          ▼          ▼
@@ -35,11 +35,13 @@ Browser → https://10.1.75.51:3269
     Backend-1    Backend-2   Backend-3
     (Sys2)       (Sys3)      (Sys4)
        │             │           │
-       │             └─────┬─────┘
-       │                   │ HTTP (db_client.py)
-       ▼                   ▼
-  local chat.db  ←  DB Proxy :6000
-  (Sys2 is DB host)
+       │             ├─────┬─────┤
+       ▼             ▼     │     ▼ 
+  Valkey Pri     Valkey Rep│ Valkey Rep   ← (Message hot-path)
+    (Sys2)         (Sys3)  │   (Sys4)
+                           │
+  DB Proxy                 │
+  local chat.db ◄──────────┴───────────── ← (Auth / Rooms)
 ```
 
 ---
@@ -49,6 +51,7 @@ Browser → https://10.1.75.51:3269
 ```bash
 # Python deps
 pip install -r server/requirements.txt
+pip install valkey psutil
 
 # Check Git is up to date on all machines
 git pull origin main
@@ -68,7 +71,7 @@ go version    # should show go1.21+
 ## STEP 2 — Build Go binaries on Sys1
 
 ```bash
-cd ~/group-chat-app
+cd ~/PixelChat-ChatApp
 
 # Build Load Balancer
 cd load_balancer && go build -o load_balancer . && cd ..
@@ -81,7 +84,7 @@ echo "✅ Binaries ready"
 
 ---
 
-## STEP 3 — Set up Sys2 (Backend-1 + DB Host)
+## STEP 3 — Set up Sys2 (Backend-1 + DB Host + Valkey Primary)
 
 **`.env` on Sys2:**
 ```env
@@ -92,28 +95,33 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-1
 DB_PROXY_PORT=6000
+VALKEY_HOST=127.0.0.1
+VALKEY_REPLICA_HOST=127.0.0.1
 # DB_PATH and UPLOAD_DIR are blank → uses local server/chat.db and server/uploads/
 ```
 
-**In tmux on Sys2 — open 2 panes:**
+**In tmux on Sys2 — open 3 panes:**
 
 ```bash
-# Pane 1: DB Proxy (MUST start first, before Sys3/Sys4 backends)
-cd ~/group-chat-app
+# Pane 1: Valkey Primary
+cd ~/PixelChat-ChatApp
+bash scripts/valkey_primary.sh
+# → Listening at 0.0.0.0:6379
+
+# Pane 2: DB Proxy (MUST start before Sys3/Sys4 backends)
+cd ~/PixelChat-ChatApp
 python3 server/db_proxy_server.py
 # → Listening at https://0.0.0.0:6000
 
-# Pane 2: Backend-1 (normal, uses local SQLite)
-cd ~/group-chat-app
+# Pane 3: Backend-1 (normal, uses local SQLite & local Valkey)
+cd ~/PixelChat-ChatApp
 python3 server/server.py
 # → Listening at https://0.0.0.0:5000 (external: https://10.1.75.51:5270)
 ```
 
 ---
 
-## STEP 4 — Set up Sys3 (Backend-2)
-
-Ask your professor which external port Sys2's internal `6000` is forwarded to — it's **`6270`**.
+## STEP 4 — Set up Sys3 (Backend-2 + Valkey Replica)
 
 **`.env` on Sys3:**
 ```env
@@ -124,19 +132,27 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-2
 DB_PROXY_URL=https://10.1.75.51:6270
+VALKEY_HOST=10.1.75.51  # Sys2's IP
+VALKEY_REPLICA_HOST=127.0.0.1
 ```
 
-**In tmux on Sys3:**
+**In tmux on Sys3 — open 2 panes:**
 ```bash
-cd ~/group-chat-app
+# Pane 1: Valkey Replica
+cd ~/PixelChat-ChatApp
+bash scripts/valkey_replica.sh 10.1.75.51
+
+# Pane 2: Backend-2
+cd ~/PixelChat-ChatApp
 bash start_backend.sh
 # → Detects DB_PROXY_URL → uses db_client.py automatically
+# → Connects to local Valkey Replica for reads
 # → Listening at https://0.0.0.0:5000 (external: https://10.1.75.51:5271)
 ```
 
 ---
 
-## STEP 5 — Set up Sys4 (Backend-3)
+## STEP 5 — Set up Sys4 (Backend-3 + Valkey Replica)
 
 **`.env` on Sys4:**
 ```env
@@ -147,11 +163,18 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-3
 DB_PROXY_URL=https://10.1.75.51:6270
+VALKEY_HOST=10.1.75.51  # Sys2's IP
+VALKEY_REPLICA_HOST=127.0.0.1
 ```
 
-**In tmux on Sys4:**
+**In tmux on Sys4 — open 2 panes:**
 ```bash
-cd ~/group-chat-app
+# Pane 1: Valkey Replica
+cd ~/PixelChat-ChatApp
+bash scripts/valkey_replica.sh 10.1.75.51
+
+# Pane 2: Backend-3
+cd ~/PixelChat-ChatApp
 bash start_backend.sh
 # → Listening at https://0.0.0.0:5000 (external: https://10.1.75.51:5272)
 ```
@@ -178,7 +201,7 @@ BACKEND_NAME=lb-node
 
 ```bash
 # Pane 1: Load Balancer
-cd ~/group-chat-app/load_balancer
+cd ~/PixelChat-ChatApp/load_balancer
 ./load_balancer \
   -port 5000 \
   -backends "https://10.1.75.51:5270,https://10.1.75.51:5271,https://10.1.75.51:5272" \
@@ -186,7 +209,7 @@ cd ~/group-chat-app/load_balancer
   -key  ../key.pem
 
 # Pane 2: Frontend static server
-cd ~/group-chat-app
+cd ~/PixelChat-ChatApp
 python3 client/serve.py
 # → https://0.0.0.0:3000 (external: https://10.1.75.51:3269)
 ```
@@ -202,7 +225,7 @@ curl -k https://10.1.75.51:5269/lb/health
 
 # 2. Check which backends are healthy
 curl -k https://10.1.75.51:5269/lb/status
-# → {"backends":[{"url":"...","alive":true,"in_flight":0}, ...]}
+# → {"backends":[{"url":"...","alive":true,"in_flight":0,"load_score":...,"overloaded":...}, ...]}
 
 # 3. Check metrics
 curl -k https://10.1.75.51:5269/lb/metrics
@@ -219,18 +242,20 @@ curl -k https://10.1.75.51:6270/health
 
 ## STEP 9 — Run Load Generator Experiments
 
-Run from your **local PC** or from **Sys1** in a separate tmux pane.
+Run from your **local PC** or from **Sys1** in a separate tmux pane. 
+**Note:** We use the new `-mode message` flag to spam the `/message` endpoint directly via POST requests.
 
 ### Experiment 1 — Single Backend (bypasses LB, hits Sys3 directly)
 
 ```bash
-cd ~/group-chat-app/load_generator
+cd ~/PixelChat-ChatApp/load_generator
 ./load_generator \
   -url         https://10.1.75.51:5271 \
-  -requests    2000 \
+  -requests    5000 \
   -concurrency 50 \
   -experiment  single_backend \
-  -path        /rooms \
+  -path        /message \
+  -mode        message \
   -out         ./results
 ```
 
@@ -239,35 +264,40 @@ cd ~/group-chat-app/load_generator
 ```bash
 ./load_generator \
   -url         https://10.1.75.51:5269 \
-  -requests    2000 \
-  -concurrency 50 \
+  -requests    15000 \
+  -concurrency 150 \
   -experiment  three_backends \
-  -path        /rooms \
+  -path        /message \
+  -mode        message \
+  -poll-lb \
   -out         ./results
 ```
 
-### Experiment 3 — With Simulated Delay (tests LB timeout)
+### Experiment 3 — Stress Test with Heavy Load
 
 ```bash
 ./load_generator \
   -url         https://10.1.75.51:5269 \
-  -requests    1000 \
-  -concurrency 20 \
-  -experiment  delay_100ms \
-  -path        "/health?delay=100ms" \
+  -requests    50000 \
+  -concurrency 500 \
+  -experiment  stress_50k \
+  -path        /message \
+  -mode        message \
+  -poll-lb \
   -out         ./results
 ```
 
 Results are saved to:
 - `results/single_backend.json`
 - `results/three_backends.json`
-- `results/results.csv` ← comparison table for your report
+- `results/stress_50k.json`
+- `results/results.csv` ← cumulative comparison table for your report
 
 ---
 
 ## Monitor LB During Experiments
 
-Poll metrics live while the generator is running:
+The `-poll-lb` flag in the generator automatically queries `/lb/status` every 2 seconds, but you can also poll metrics live in another terminal window while the generator is running:
 
 ```bash
 watch -n 1 'curl -sk https://10.1.75.51:5269/lb/metrics | python3 -m json.tool'
@@ -275,42 +305,26 @@ watch -n 1 'curl -sk https://10.1.75.51:5269/lb/metrics | python3 -m json.tool'
 
 ---
 
-## tmux Quick Reference
-
-```bash
-# Start a new session
-tmux new -s chat
-
-# Create a new pane (split horizontally)
-Ctrl+B then "
-
-# Switch between panes
-Ctrl+B then arrow keys
-
-# Detach (session keeps running)
-Ctrl+B then D
-
-# Re-attach
-tmux attach -t chat
-```
-
----
-
 ## Startup Order (Important!)
 
-Always start in this order:
+Always start in this exact order to ensure successful connections:
 
 ```
-1. Sys2: DB Proxy      → python3 server/db_proxy_server.py
-2. Sys2: Backend-1     → python3 server/server.py
-3. Sys3: Backend-2     → bash start_backend.sh
-4. Sys4: Backend-3     → bash start_backend.sh
-5. Sys1: Load Balancer → ./load_balancer/load_balancer -port 5000 ...
-6. Sys1: Frontend      → python3 client/serve.py
+1. Sys2: Valkey Primary  → bash scripts/valkey_primary.sh
+2. Sys3: Valkey Replica  → bash scripts/valkey_replica.sh <Sys2_IP>
+3. Sys4: Valkey Replica  → bash scripts/valkey_replica.sh <Sys2_IP>
+4. Sys2: DB Proxy        → python3 server/db_proxy_server.py
+5. Sys2: Backend-1       → python3 server/server.py
+6. Sys3: Backend-2       → bash start_backend.sh
+7. Sys4: Backend-3       → bash start_backend.sh
+8. Sys1: Load Balancer   → ./load_balancer -port 5000 ...
+9. Sys1: Frontend        → python3 client/serve.py
 ```
 
-> The DB Proxy **must** be running before Sys3/Sys4 backends start,
-> because they connect to it on startup.
+> **Why this order?**
+> - Valkey Replicas must connect to the Primary on boot.
+> - The DB Proxy **must** be running before Sys3/Sys4 backends start.
+> - The LB should only start once the backends are ready to serve `/health` checks.
 
 ---
 
@@ -322,6 +336,7 @@ Always start in this order:
 | LB shows all backends DOWN immediately | Wait ~2s for first health check, then check `/lb/status` |
 | `no healthy backends` error from LB | `curl -k https://10.1.75.51:527X/health` to test each backend directly |
 | Sys3/Sys4 backend crashes on start | DB Proxy not running yet on Sys2 — start it first |
+| `Valkey ConnectionError` | Make sure Valkey primary is running on Sys2 on port 6379, and replicas are running on Sys3/4. Check `VALKEY_HOST` in `.env` |
 | `DB_PROXY_URL is not set` error | `DB_PROXY_URL` missing from `.env` on Sys3/Sys4 |
 | `certificate verify failed` in curl | Use `curl -k` (skip verify for self-signed cert) |
 | LB cert error | Pass `-cert ../cert.pem -key ../key.pem` flags to load_balancer |
@@ -337,5 +352,8 @@ Always start in this order:
 | Load Balancer | Sys1 | 5000 | 5269 |
 | Backend-1 | Sys2 | 5000 | 5270 |
 | DB Proxy | Sys2 | 6000 | **6270** |
+| Valkey Primary| Sys2 | 6379 | **6379** |
 | Backend-2 | Sys3 | 5000 | 5271 |
+| Valkey Replica| Sys3 | 6379 | 6379 |
 | Backend-3 | Sys4 | 5000 | 5272 |
+| Valkey Replica| Sys4 | 6379 | 6379 |

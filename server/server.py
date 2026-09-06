@@ -44,8 +44,11 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidSignature
+import psutil
+import time as _time
 
 import db  # local module — server/db.py
+import feed_store # Valkey-based feed store
 
 
 # ── Environment ───────────────────────────────────────────────────────────────
@@ -224,6 +227,14 @@ class ConnectionManager:
 app = FastAPI(title="Secure Group Chat Server")
 manager = ConnectionManager()
 
+BACKEND_NAME = os.environ.get("BACKEND_NAME", "unknown")
+
+@app.middleware("http")
+async def add_backend_id_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Backend-Id"] = BACKEND_NAME
+    return response
+
 # Per-room cleanup tasks: room_id → asyncio.Task
 cleanup_tasks: dict[str, asyncio.Task] = {}
 
@@ -250,11 +261,47 @@ CLEANUP_TIMEOUT = int(os.environ.get("CLEANUP_TIMEOUT", 300))
 
 @app.get("/health")
 async def health_check():
-    """Lightweight endpoint used by the frontend to detect if the SSL cert is accepted."""
-    return {"status": "ok"}
+    """Lightweight endpoint used by the frontend and load balancer."""
+    try:
+        load1, _, _ = os.getloadavg()
+    except AttributeError:
+        # fallback for environments without getloadavg (e.g. Windows)
+        load1 = 0.0
+    return {
+        "status": "ok",
+        "cpu_percent": psutil.cpu_percent(interval=None),
+        "load_avg_1m": load1,
+        "active_ws_connections": len(manager.active_connections),
+        "valkey_rtt_ms": await feed_store.probe_latency(),
+    }
 
 
 # ── Request models ──────────────────────────────────────────────────────────
+from pydantic import Field
+
+class SimpleMessageRequest(BaseModel):
+    client_name: str = Field(..., alias="client-name")
+    msg: str
+    msg_id: str | None = None
+    class Config:
+        populate_by_name = True
+
+DEFAULT_FEED_ROOM = "loadtest-feed"
+
+@app.post("/message")
+async def post_message(req: SimpleMessageRequest):
+    msg_id = req.msg_id or str(uuid.uuid4())
+    inserted = await feed_store.insert_if_new(
+        room_id=DEFAULT_FEED_ROOM,
+        msg_id=msg_id,
+        payload={"client_name": req.client_name, "msg": req.msg, "ts": _time.time()},
+    )
+    return {"ok": True, "msg_id": msg_id, "duplicate": not inserted}
+
+@app.get("/feed")
+async def get_feed():
+    return {"messages": await feed_store.get_all(DEFAULT_FEED_ROOM)}
+
 
 class RegisterRequest(BaseModel):
     username: str
@@ -273,8 +320,9 @@ class CreateRoomRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup():
-    """Initialise the SQLite database on server start."""
+    """Initialise the SQLite database and Valkey feed store on server start."""
     db.init_db()
+    await feed_store.init_feed_store()
 
 
 @app.get("/config.js")
@@ -440,8 +488,10 @@ async def get_room(room_id: str):
 @app.delete("/rooms/{room_id}/history")
 async def delete_room_history(room_id: str, body: dict):
     username = body.get("username", "").strip()
-    if not username or not db.clear_room_history_by_creator(room_id, username):
+    room = db.get_room(room_id)
+    if not username or not room or room.get("created_by", "").lower() != username.lower():
         raise HTTPException(status_code=403, detail="Only the room creator can clear history.")
+    await feed_store.delete_room_messages(room_id)
     await manager.send_to_all_in_room(room_id, {
         "type":     "room_history_cleared",
         "room_id":  room_id,
@@ -453,8 +503,11 @@ async def delete_room_history(room_id: str, body: dict):
 @app.delete("/rooms/{room_id}")
 async def delete_chat_room(room_id: str, body: dict):
     username = body.get("username", "").strip()
-    if not username or not db.delete_room(room_id, username):
+    room = db.get_room(room_id)
+    if not username or not room or room.get("created_by", "").lower() != username.lower():
         raise HTTPException(status_code=403, detail="Only the room creator can delete this room.")
+    await feed_store.delete_room_messages(room_id)
+    db.delete_room(room_id, username)
     await manager.send_to_all_in_room(room_id, {
         "type":     "room_deleted",
         "room_id":  room_id,
@@ -635,7 +688,14 @@ async def websocket_endpoint(websocket: WebSocket):
         })
 
         # Send DB-backed history to the new joiner (unlimited history)
-        history = db.get_history(room_id=room_id, limit=None, username=username)
+        raw_history = await feed_store.get_all(room_id)
+        history = []
+        for msg in raw_history:
+            tgt = msg.get("target_user")
+            if tgt and username:
+                if msg.get("username", "").lower() != username.lower() and tgt.lower() != username.lower():
+                    continue
+            history.append(msg)
         if history:
             tampered_count = 0
             valid_count = 0
@@ -683,22 +743,30 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # ── Persist to DB ─────────────────────────────────────────
                 if ciphertext:
-                    db.save_message(
-                        room_id     = room_id,
-                        username    = username,
-                        avatar      = avatar,
-                        ciphertext  = ciphertext,
-                        iv          = iv,
-                        signature   = signature,
-                        public_key  = sender_key,
-                        timestamp   = timestamp(),
-                        sig_valid   = sig_valid,
-                        msg_id      = client_msg_id,
-                        reply_to    = reply_to,
-                        target_user = target_user,
-                        attachment  = json.dumps(attachment) if attachment else None,
-                    )
-                    print(f"\033[93m[PERSISTENCE] 💾 Message from '@{username}' stored in SQLite DB (AES-GCM encrypted, NOT plaintext) | Room: '{room_id}' | IV: {iv[:12]}... | Sig valid: {sig_valid}\033[0m")
+                    payload = {
+                        "type": "message",
+                        "msg_id": client_msg_id,
+                        "username": username,
+                        "avatar": avatar,
+                        "ciphertext": ciphertext,
+                        "iv": iv,
+                        "signature": signature,
+                        "public_key": sender_key,
+                        "timestamp": timestamp(),
+                        "sig_valid": sig_valid,
+                        "reply_to": reply_to,
+                        "is_deleted": False,
+                        "target_user": target_user,
+                        "is_edited": False,
+                        "created_at_ts": _time.time(),
+                        "attachment": attachment,
+                    }
+                    # We compute HMAC for the payload just to keep the schema aligned
+                    hmac_digest = hmac.new(bytes.fromhex(HMAC_SECRET_HEX), (ciphertext + iv).encode("utf-8"), hashlib.sha256).hexdigest()
+                    payload["hmac_digest"] = hmac_digest
+                    
+                    await feed_store.insert_if_new(room_id, client_msg_id, payload)
+                    print(f"\033[93m[PERSISTENCE] 💾 Message from '@{username}' stored in Valkey (AES-GCM encrypted, NOT plaintext) | Room: '{room_id}' | IV: {iv[:12]}... | Sig valid: {sig_valid}\033[0m")
 
                 # ── Build outbound message ─────────────────────────────────
                 msg = {
@@ -792,18 +860,25 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "delete_message":
                 del_msg_id = data.get("msg_id", "")
                 if del_msg_id:
-                    success = db.delete_message(del_msg_id, username)
-                    if success:
-                        # Broadcast tombstone to entire room
-                        await manager.send_to_all_in_room(room_id, {
-                            "type":     "message_deleted",
-                            "msg_id":   del_msg_id,
-                            "username": username,
-                        })
+                    msg_to_delete = await feed_store.get_msg(room_id, del_msg_id)
+                    if msg_to_delete and msg_to_delete.get("username", "").lower() == username.lower() and not msg_to_delete.get("is_deleted"):
+                        success = await feed_store.soft_delete(room_id, del_msg_id)
+                        if success:
+                            # Broadcast tombstone to entire room
+                            await manager.send_to_all_in_room(room_id, {
+                                "type":     "message_deleted",
+                                "msg_id":   del_msg_id,
+                                "username": username,
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type":    "error",
+                                "message": "Could not delete message.",
+                            })
                     else:
                         await websocket.send_json({
                             "type":    "error",
-                            "message": "Could not delete message.",
+                            "message": "Only the sender can delete this message.",
                         })
 
             # ── Edit message (5-minute window) ────────────────────────
@@ -821,14 +896,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not sig_valid:
                         print(f"\033[91m[SECURITY ALERT] 🚨 INVALID / TAMPERED EDIT SIGNATURE! Sender: '{username}' | Room: '{room_id}' | Msg ID: '{edit_msg_id}'\033[0m")
 
-                    success, err_msg = db.edit_message(
-                        msg_id     = edit_msg_id,
-                        username   = username,
-                        ciphertext = ciphertext,
-                        iv         = iv,
-                        signature  = signature,
-                        sig_valid  = sig_valid,
-                    )
+                    msg_to_edit = await feed_store.get_msg(room_id, edit_msg_id)
+                    if not msg_to_edit:
+                        success, err_msg = False, "Message not found."
+                    elif msg_to_edit.get("is_deleted"):
+                        success, err_msg = False, "Cannot edit a deleted message."
+                    elif msg_to_edit.get("username", "").lower() != username.lower():
+                        success, err_msg = False, "You can only edit your own messages."
+                    elif msg_to_edit.get("created_at_ts") and (_time.time() - float(msg_to_edit["created_at_ts"]) > 300):
+                        success, err_msg = False, "Message edit window (5 minutes) has expired."
+                    else:
+                        hmac_digest = hmac.new(bytes.fromhex(HMAC_SECRET_HEX), (ciphertext + iv).encode("utf-8"), hashlib.sha256).hexdigest()
+                        success = await feed_store.edit_msg(
+                            room_id=room_id,
+                            msg_id=edit_msg_id,
+                            new_ciphertext=ciphertext,
+                            new_iv=iv,
+                            new_sig=signature,
+                            new_hmac=hmac_digest,
+                            sig_valid=sig_valid
+                        )
+                        err_msg = "" if success else "Failed to edit message."
 
                     if success:
                         # Broadcast edited message payload to entire room
@@ -851,7 +939,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # ── Clear room history (creator only) ──────────────────────
             elif msg_type == "clear_room_history":
-                success = db.clear_room_history_by_creator(room_id, username)
+                room = db.get_room(room_id)
+                success = False
+                if room and room.get("created_by", "").lower() == username.lower():
+                    await feed_store.delete_room_messages(room_id)
+                    success = True
                 if success:
                     print(f"[*] History of room '{room_id}' cleared by creator '{username}'")
                     await manager.send_to_all_in_room(room_id, {
@@ -867,7 +959,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # ── Delete room (creator only) ─────────────────────────────
             elif msg_type == "delete_room":
-                success = db.delete_room(room_id, username)
+                room = db.get_room(room_id)
+                success = False
+                if room and room.get("created_by", "").lower() == username.lower():
+                    await feed_store.delete_room_messages(room_id)
+                    success = db.delete_room(room_id, username)
                 if success:
                     print(f"[!] Room '{room_id}' deleted by creator '{username}'")
                     await manager.send_to_all_in_room(room_id, {

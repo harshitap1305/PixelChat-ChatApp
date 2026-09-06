@@ -32,6 +32,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -50,28 +51,75 @@ type LoadBalancer struct {
 	metrics  Metrics
 }
 
-// nextBackend returns the next alive backend using round-robin.
-// It tries every backend once; returns nil if all are unhealthy.
+// nextBackend returns the next alive backend using Power of Two Choices (P2C)
 func (lb *LoadBalancer) nextBackend() *Backend {
 	n := len(lb.backends)
 	if n == 0 {
 		return nil
 	}
-	for i := 0; i < n; i++ {
+	if n == 1 {
+		b := lb.backends[0]
+		if b.IsAlive() && !b.IsOverloaded() {
+			return b
+		}
+		if b.IsAlive() { // fallback if all overloaded
+			return b
+		}
+		return nil
+	}
+
+	// Pick two distinct random indices
+	i := rand.Intn(n)
+	j := rand.Intn(n - 1)
+	if j >= i {
+		j++
+	}
+
+	b1 := lb.backends[i]
+	b2 := lb.backends[j]
+
+	var candidate *Backend
+	if b1.IsAlive() && !b1.IsOverloaded() && b2.IsAlive() && !b2.IsOverloaded() {
+		if b1.LoadScore() <= b2.LoadScore() {
+			candidate = b1
+		} else {
+			candidate = b2
+		}
+	} else if b1.IsAlive() && !b1.IsOverloaded() {
+		candidate = b1
+	} else if b2.IsAlive() && !b2.IsOverloaded() {
+		candidate = b2
+	}
+
+	if candidate != nil {
+		return candidate
+	}
+
+	// Fallback 1: Try round-robin skipping overloaded
+	for k := 0; k < n; k++ {
+		idx := lb.next.Add(1) % uint64(n)
+		b := lb.backends[idx]
+		if b.IsAlive() && !b.IsOverloaded() {
+			return b
+		}
+	}
+
+	// Fallback 2: Any alive backend
+	for k := 0; k < n; k++ {
 		idx := lb.next.Add(1) % uint64(n)
 		b := lb.backends[idx]
 		if b.IsAlive() {
 			return b
 		}
 	}
+
 	return nil
 }
 
 // healthLoop runs forever, checking /health on every backend every interval.
 func (lb *LoadBalancer) healthLoop(interval time.Duration) {
-	// Insecure transport for self-signed backend certs
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 — lab self-signed certs
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 	}
 	client := &http.Client{
 		Transport: transport,
@@ -86,11 +134,19 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 			wasAlive := b.IsAlive()
 			if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
 				b.SetAlive(false)
+				b.SetLoadScore(9999.0) // Penalize dead backend
 				if wasAlive {
 					log.Printf("[HEALTH] ⬇  Backend DOWN: %s", b.URL)
 				}
 			} else {
+				var h BackendHealth
+				if err := json.NewDecoder(resp.Body).Decode(&h); err == nil {
+					score := b.computeLoadScore(h)
+					b.SetLoadScore(score)
+					b.UpdateOverloaded(score, 75.0, 50.0) // Hysteresis thresholds
+				}
 				resp.Body.Close()
+
 				b.SetAlive(true)
 				if !wasAlive {
 					log.Printf("[HEALTH] ⬆  Backend UP:   %s", b.URL)
@@ -161,16 +217,20 @@ func (lb *LoadBalancer) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (lb *LoadBalancer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	type backendStatus struct {
-		URL      string `json:"url"`
-		Alive    bool   `json:"alive"`
-		InFlight int64  `json:"in_flight"`
+		URL        string  `json:"url"`
+		Alive      bool    `json:"alive"`
+		InFlight   int64   `json:"in_flight"`
+		LoadScore  float64 `json:"load_score"`
+		Overloaded bool    `json:"overloaded"`
 	}
 	statuses := make([]backendStatus, 0, len(lb.backends))
 	for _, b := range lb.backends {
 		statuses = append(statuses, backendStatus{
-			URL:      b.URL.String(),
-			Alive:    b.IsAlive(),
-			InFlight: b.InFlightCount(),
+			URL:        b.URL.String(),
+			Alive:      b.IsAlive(),
+			InFlight:   b.InFlightCount(),
+			LoadScore:  b.LoadScore(),
+			Overloaded: b.IsOverloaded(),
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
