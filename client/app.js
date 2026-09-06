@@ -522,7 +522,26 @@ function scheduleReconnect() {
     const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts), RECONNECT_MAX_DELAY);
     reconnectAttempts++;
     updateConnectionStatus("reconnecting");
-    reconnectTimer = setTimeout(connect, delay);
+    reconnectTimer = setTimeout(async () => {
+        // Always get a fresh one-time token before reconnecting,
+        // because the previous token was consumed when the WS was accepted.
+        if (currentUsername) {
+            try {
+                const res = await fetch(`${HTTP_PROTOCOL}//${BACKEND_HOST}/refresh-token`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: currentUsername }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    sessionToken = data.token;
+                }
+            } catch (e) {
+                console.warn("[WS] Could not refresh token before reconnect:", e);
+            }
+        }
+        connect();
+    }, delay);
 }
 
 function disconnect() {

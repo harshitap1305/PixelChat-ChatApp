@@ -8,4 +8,5 @@ if [ -z "$PRIMARY_IP" ]; then
     exit 1
 fi
 redis-server --daemonize yes --bind 0.0.0.0 --port $LOCAL_PORT \
+    --protected-mode no \
     --replicaof $PRIMARY_IP $PRIMARY_PORT --replica-read-only yes
