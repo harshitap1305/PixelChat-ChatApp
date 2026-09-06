@@ -165,6 +165,9 @@ func makeTransport(timeout time.Duration) *http.Transport {
 	return &http.Transport{
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 		ResponseHeaderTimeout: timeout,
+		MaxIdleConns:          500,
+		MaxIdleConnsPerHost:   500,
+		IdleConnTimeout:       90 * time.Second,
 	}
 }
 
