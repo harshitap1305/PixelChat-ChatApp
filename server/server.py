@@ -497,7 +497,10 @@ async def delete_room_history(room_id: str, body: dict):
     room = db.get_room(room_id)
     if not username or not room or room.get("created_by", "").lower() != username.lower():
         raise HTTPException(status_code=403, detail="Only the room creator can clear history.")
-    await feed_store.delete_room_messages(room_id)
+    try:
+        await feed_store.delete_room_messages(room_id)
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to delete history from Valkey: {e}\033[0m")
     await manager.send_to_all_in_room(room_id, {
         "type":     "room_history_cleared",
         "room_id":  room_id,
@@ -512,7 +515,10 @@ async def delete_chat_room(room_id: str, body: dict):
     room = db.get_room(room_id)
     if not username or not room or room.get("created_by", "").lower() != username.lower():
         raise HTTPException(status_code=403, detail="Only the room creator can delete this room.")
-    await feed_store.delete_room_messages(room_id)
+    try:
+        await feed_store.delete_room_messages(room_id)
+    except Exception as e:
+        print(f"\033[91m[ERROR] Failed to delete history from Valkey: {e}\033[0m")
     db.delete_room(room_id, username)
     await manager.send_to_all_in_room(room_id, {
         "type":     "room_deleted",
@@ -694,7 +700,12 @@ async def websocket_endpoint(websocket: WebSocket):
         })
 
         # Send DB-backed history to the new joiner (unlimited history)
-        raw_history = await feed_store.get_all(room_id)
+        try:
+            raw_history = await feed_store.get_all(room_id)
+        except Exception as e:
+            print(f"\033[91m[ERROR] Failed to fetch history from Valkey: {e}\033[0m")
+            raw_history = []
+            await websocket.send_json({"type": "error", "message": "Failed to load chat history (database unreachable)."})
         history = []
         for msg in raw_history:
             tgt = msg.get("target_user")
@@ -771,8 +782,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     hmac_digest = hmac.new(bytes.fromhex(HMAC_SECRET_HEX), (ciphertext + iv).encode("utf-8"), hashlib.sha256).hexdigest()
                     payload["hmac_digest"] = hmac_digest
                     
-                    await feed_store.insert_if_new(room_id, client_msg_id, payload)
-                    print(f"\033[93m[PERSISTENCE] 💾 Message from '@{username}' stored in Valkey (AES-GCM encrypted, NOT plaintext) | Room: '{room_id}' | IV: {iv[:12]}... | Sig valid: {sig_valid}\033[0m")
+                    try:
+                        await feed_store.insert_if_new(room_id, client_msg_id, payload)
+                        print(f"\033[93m[PERSISTENCE] 💾 Message from '@{username}' stored in Valkey (AES-GCM encrypted, NOT plaintext) | Room: '{room_id}' | IV: {iv[:12]}... | Sig valid: {sig_valid}\033[0m")
+                    except Exception as e:
+                        print(f"\033[91m[ERROR] Failed to save message to Valkey: {e}\033[0m")
+                        await websocket.send_json({"type": "error", "message": "Failed to save message. Please try again."})
+                        continue
 
                 # ── Build outbound message ─────────────────────────────────
                 msg = {
