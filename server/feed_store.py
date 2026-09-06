@@ -32,10 +32,10 @@ async def init_feed_store():
     global _primary, _replica, _insert_script
     
     primary_host = os.environ.get("VALKEY_HOST", "127.0.0.1")
-    primary_port = int(os.environ.get("VALKEY_PORT", "6379"))
+    primary_port = int(os.environ.get("VALKEY_PORT", "4000"))
     
     replica_host = os.environ.get("VALKEY_REPLICA_HOST", "127.0.0.1")
-    replica_port = int(os.environ.get("VALKEY_REPLICA_PORT", "6379"))
+    replica_port = int(os.environ.get("VALKEY_REPLICA_PORT", "4000"))
     
     _primary = aiovalkey.Redis(host=primary_host, port=primary_port, decode_responses=True)
     _replica = aiovalkey.Redis(host=replica_host, port=replica_port, decode_responses=True)

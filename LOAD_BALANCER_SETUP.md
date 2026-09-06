@@ -5,9 +5,9 @@
 | Machine | Role | Internal Port | External Port | Notes |
 |---------|------|:---:|:---:|------|
 | **Sys1** | Frontend + Go Load Balancer | `3000` / `5000` | `3269` / `5269` | Your machine |
-| **Sys2** | Backend-1 + **DB Host** + DB Proxy + **Valkey Primary** | `5000` / `6000` / `6379` | `5270` / `6270` / `6379` | Hosts `chat.db` and Valkey Primary |
-| **Sys3** | Backend-2 + **Valkey Replica** | `5000` / `6379` | `5271` / `6379` | Points to Sys2 DB and Valkey Primary |
-| **Sys4** | Backend-3 + **Valkey Replica** | `5000` / `6379` | `5272` / `6379` | Points to Sys2 DB and Valkey Primary |
+| **Sys2** | Backend-1 + DB Proxy + Valkey Primary | `5000` / `6000` / `4000` | `5270` / `6270` / `4270` | Hosts `chat.db` and Valkey Primary |
+| **Sys3** | Backend-2 + Valkey Replica | `5000` / `4000` | `5271` / `4271` | Points to Sys2 DB and Valkey Primary |
+| **Sys4** | Backend-3 + Valkey Replica | `5000` / `4000` | `5272` / `4272` | Points to Sys2 DB and Valkey Primary |
 | **Local PC** | Load Generator | — | — | Sends load to LB |
 
 **Shared IP:** `10.1.75.51`
@@ -37,10 +37,11 @@ Browser → https://10.1.75.51:3269
        │             │           │
        │             ├─────┬─────┤
        ▼             ▼     │     ▼ 
-  Valkey Pri     Valkey Rep│ Valkey Rep   ← (Message hot-path)
+  Valkey Pri     Valkey Rep│ Valkey Rep   ← (Message hot-path, all internal :4000)
     (Sys2)         (Sys3)  │   (Sys4)
                            │
   DB Proxy                 │
+  (Sys2 :6000)             │
   local chat.db ◄──────────┴───────────── ← (Auth / Rooms)
 ```
 
@@ -96,24 +97,26 @@ HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-1
 DB_PROXY_PORT=6000
 VALKEY_HOST=127.0.0.1
+VALKEY_PORT=4000
 VALKEY_REPLICA_HOST=127.0.0.1
+VALKEY_REPLICA_PORT=4000
 # DB_PATH and UPLOAD_DIR are blank → uses local server/chat.db and server/uploads/
 ```
 
 **In tmux on Sys2 — open 3 panes:**
 
 ```bash
-# Pane 1: Valkey Primary
+# Pane 1: Valkey Primary (Internal Port 4000)
 cd ~/PixelChat-ChatApp
-bash scripts/valkey_primary.sh
-# → Listening at 0.0.0.0:6379
+bash scripts/valkey_primary.sh 4000
+# → Listening at 0.0.0.0:4000
 
-# Pane 2: DB Proxy (MUST start before Sys3/Sys4 backends)
+# Pane 2: DB Proxy (Internal Port 6000, MUST start before Sys3/Sys4 backends)
 cd ~/PixelChat-ChatApp
 python3 server/db_proxy_server.py
-# → Listening at https://0.0.0.0:6000
+# → Listening at https://0.0.0.0:6000 (external: https://10.1.75.51:6270)
 
-# Pane 3: Backend-1 (normal, uses local SQLite & local Valkey)
+# Pane 3: Backend-1 (Internal Port 5000, normal)
 cd ~/PixelChat-ChatApp
 python3 server/server.py
 # → Listening at https://0.0.0.0:5000 (external: https://10.1.75.51:5270)
@@ -133,14 +136,16 @@ HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-2
 DB_PROXY_URL=https://10.1.75.51:6270
 VALKEY_HOST=10.1.75.51  # Sys2's IP
+VALKEY_PORT=4270        # Sys2's Valkey Primary external port
 VALKEY_REPLICA_HOST=127.0.0.1
+VALKEY_REPLICA_PORT=4000
 ```
 
 **In tmux on Sys3 — open 2 panes:**
 ```bash
-# Pane 1: Valkey Replica
+# Pane 1: Valkey Replica (Internal Port 4000)
 cd ~/PixelChat-ChatApp
-bash scripts/valkey_replica.sh 10.1.75.51
+bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
 
 # Pane 2: Backend-2
 cd ~/PixelChat-ChatApp
@@ -164,14 +169,16 @@ HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-3
 DB_PROXY_URL=https://10.1.75.51:6270
 VALKEY_HOST=10.1.75.51  # Sys2's IP
+VALKEY_PORT=4270        # Sys2's Valkey Primary external port
 VALKEY_REPLICA_HOST=127.0.0.1
+VALKEY_REPLICA_PORT=4000
 ```
 
 **In tmux on Sys4 — open 2 panes:**
 ```bash
-# Pane 1: Valkey Replica
+# Pane 1: Valkey Replica (Internal Port 4000)
 cd ~/PixelChat-ChatApp
-bash scripts/valkey_replica.sh 10.1.75.51
+bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
 
 # Pane 2: Backend-3
 cd ~/PixelChat-ChatApp
@@ -200,7 +207,7 @@ BACKEND_NAME=lb-node
 **In tmux on Sys1 — open 2 panes:**
 
 ```bash
-# Pane 1: Load Balancer
+# Pane 1: Load Balancer (Internal Port 5000)
 cd ~/PixelChat-ChatApp/load_balancer
 ./load_balancer \
   -port 5000 \
@@ -208,7 +215,7 @@ cd ~/PixelChat-ChatApp/load_balancer
   -cert ../cert.pem \
   -key  ../key.pem
 
-# Pane 2: Frontend static server
+# Pane 2: Frontend static server (Internal Port 3000)
 cd ~/PixelChat-ChatApp
 python3 client/serve.py
 # → https://0.0.0.0:3000 (external: https://10.1.75.51:3269)
@@ -310,9 +317,9 @@ watch -n 1 'curl -sk https://10.1.75.51:5269/lb/metrics | python3 -m json.tool'
 Always start in this exact order to ensure successful connections:
 
 ```
-1. Sys2: Valkey Primary  → bash scripts/valkey_primary.sh
-2. Sys3: Valkey Replica  → bash scripts/valkey_replica.sh <Sys2_IP>
-3. Sys4: Valkey Replica  → bash scripts/valkey_replica.sh <Sys2_IP>
+1. Sys2: Valkey Primary  → bash scripts/valkey_primary.sh 4000
+2. Sys3: Valkey Replica  → bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
+3. Sys4: Valkey Replica  → bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
 4. Sys2: DB Proxy        → python3 server/db_proxy_server.py
 5. Sys2: Backend-1       → python3 server/server.py
 6. Sys3: Backend-2       → bash start_backend.sh
@@ -336,7 +343,7 @@ Always start in this exact order to ensure successful connections:
 | LB shows all backends DOWN immediately | Wait ~2s for first health check, then check `/lb/status` |
 | `no healthy backends` error from LB | `curl -k https://10.1.75.51:527X/health` to test each backend directly |
 | Sys3/Sys4 backend crashes on start | DB Proxy not running yet on Sys2 — start it first |
-| `Valkey ConnectionError` | Make sure Valkey primary is running on Sys2 on port 6379, and replicas are running on Sys3/4. Check `VALKEY_HOST` in `.env` |
+| `Valkey ConnectionError` | Make sure Valkey primary is running on Sys2. Check `VALKEY_HOST` and `VALKEY_PORT` in `.env` |
 | `DB_PROXY_URL is not set` error | `DB_PROXY_URL` missing from `.env` on Sys3/Sys4 |
 | `certificate verify failed` in curl | Use `curl -k` (skip verify for self-signed cert) |
 | LB cert error | Pass `-cert ../cert.pem -key ../key.pem` flags to load_balancer |
@@ -344,16 +351,16 @@ Always start in this exact order to ensure successful connections:
 
 ---
 
-## Port Summary (fill in your actual forwarded ports)
+## Port Summary
 
 | Service | Machine | Internal | External |
 |---------|---------|:---:|:---:|
 | Frontend | Sys1 | 3000 | 3269 |
 | Load Balancer | Sys1 | 5000 | 5269 |
 | Backend-1 | Sys2 | 5000 | 5270 |
-| DB Proxy | Sys2 | 6000 | **6270** |
-| Valkey Primary| Sys2 | 6379 | **6379** |
+| DB Proxy | Sys2 | 6000 | 6270 |
+| Valkey Primary| Sys2 | 4000 | 4270 |
 | Backend-2 | Sys3 | 5000 | 5271 |
-| Valkey Replica| Sys3 | 6379 | 6379 |
+| Valkey Replica| Sys3 | 4000 | 4271 |
 | Backend-3 | Sys4 | 5000 | 5272 |
-| Valkey Replica| Sys4 | 6379 | 6379 |
+| Valkey Replica| Sys4 | 4000 | 4272 |
