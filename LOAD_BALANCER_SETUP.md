@@ -292,8 +292,8 @@ Run from your **local PC** or from **Sys1** in a separate tmux pane.
 cd ~/PixelChat-ChatApp/load_generator
 ./load_generator \
   -url         https://10.1.75.51:5271 \
-  -requests    5000 \
-  -concurrency 50 \
+  -requests    15000 \
+  -concurrency 150 \
   -experiment  single_backend \
   -path        /message \
   -mode        message \

@@ -143,7 +143,7 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 				if err := json.NewDecoder(resp.Body).Decode(&h); err == nil {
 					score := b.computeLoadScore(h)
 					b.SetLoadScore(score)
-					b.UpdateOverloaded(score, 75.0, 50.0) // Hysteresis thresholds
+					b.UpdateOverloaded(score, 200.0, 150.0) // Relaxed Hysteresis thresholds
 				}
 				resp.Body.Close()
 
@@ -188,12 +188,12 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 	var proxyFailed atomic.Bool
 
 	proxy := httputil.NewSingleHostReverseProxy(b.URL)
-	proxy.Transport = makeTransport(800 * time.Millisecond)
+	proxy.Transport = makeTransport(10 * time.Second) // Match client timeout (or slightly higher)
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
 		proxyFailed.Store(true)
 		log.Printf("[ERROR] Backend %s error: %v", b.URL, err)
-		b.SetAlive(false)
+		// REMOVED: b.SetAlive(false) -> Do not instantly kill a backend on a single timeout!
 		lb.metrics.BackendErrors.Add(1)
 		lb.metrics.Failed.Add(1)
 		http.Error(rw, `{"error":"backend unavailable"}`, http.StatusBadGateway)
