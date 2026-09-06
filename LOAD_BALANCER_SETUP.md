@@ -61,7 +61,38 @@ pip install valkey psutil
 git pull origin main
 ```
 
+> ⚠️ **Run `git pull` on ALL machines before starting anything.**
+> Scripts like `valkey_primary.sh` and `valkey_replica.sh` have been updated
+> and old versions will not work correctly.
+
 ---
+
+## STEP 0 — Generate TLS Certificates (all machines)
+
+Run on **every machine** (Sys1, Sys2, Sys3, Sys4):
+
+```bash
+cd ~/PixelChat-ChatApp
+python3 generate_certs.py
+# → Generated cert.pem and key.pem
+```
+
+> **Important:** The certificate now includes `10.1.75.51` in its Subject Alternative
+> Names (SANs). This is required for modern browsers — if the IP is not in the SAN
+> list the browser will always reject the connection even if you click "Proceed".
+
+After starting ALL servers, you must **accept the cert in the browser once per URL**:
+
+1. Open each of these in a new tab and click **Advanced → Proceed (unsafe)**:
+   - `https://10.1.75.51:5269` (Load Balancer)
+   - `https://10.1.75.51:5270` (Backend-1)
+   - `https://10.1.75.51:5271` (Backend-2)
+   - `https://10.1.75.51:5272` (Backend-3)
+   - `https://10.1.75.51:6270` (DB Proxy)
+2. Then open the app at `https://10.1.75.51:3269` and do a **hard refresh** (`Ctrl+Shift+R`).
+
+> This step is **not optional** — without it the browser silently refuses all WebSocket
+> (`wss://`) connections, causing a reconnect loop and TLS error spam in the LB logs.
 
 ## STEP 1 — Install Go on Sys1
 
