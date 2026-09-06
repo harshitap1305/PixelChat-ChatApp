@@ -211,7 +211,9 @@ func main() {
 	client := &http.Client{
 		Timeout: *timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, // #nosec G402
+			MaxIdleConns:        500,
+			MaxIdleConnsPerHost: 500,
 		},
 	}
 

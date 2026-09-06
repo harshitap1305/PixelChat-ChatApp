@@ -80,7 +80,7 @@ func (lb *LoadBalancer) nextBackend() *Backend {
 
 	var candidate *Backend
 	if b1.IsAlive() && !b1.IsOverloaded() && b2.IsAlive() && !b2.IsOverloaded() {
-		if b1.LoadScore() <= b2.LoadScore() {
+		if b1.InFlightCount() <= b2.InFlightCount() {
 			candidate = b1
 		} else {
 			candidate = b2
