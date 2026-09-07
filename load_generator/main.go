@@ -106,6 +106,7 @@ func worker(
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				success = true
 			}
+			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 		}
 
@@ -256,6 +257,7 @@ func main() {
 					var s map[string]interface{}
 					json.NewDecoder(resp.Body).Decode(&s)
 					log.Printf("[POLL] LB Status: %v", s)
+					io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
 				}
 			}

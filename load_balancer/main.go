@@ -166,7 +166,7 @@ var globalTransport = &http.Transport{
 	ResponseHeaderTimeout: 10 * time.Second,
 	MaxIdleConns:          500,
 	MaxIdleConnsPerHost:   500,
-	IdleConnTimeout:       90 * time.Second,
+	IdleConnTimeout:       4 * time.Second, // Must be lower than Uvicorn's 5s timeout!
 }
 
 // serveRequest is the main HTTP handler — picks a backend and proxies the request.
