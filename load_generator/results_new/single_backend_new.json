@@ -3,12 +3,12 @@
   "target_url": "https://10.1.75.51:5271/message",
   "requests": 45000,
   "concurrency": 350,
-  "successful": 44867,
-  "failed": 133,
-  "throughput_rps": 719.4449231607067,
-  "dropout_percent": 0.29555555555555557,
-  "p50_ms": 414.674,
-  "p95_ms": 642.715,
-  "p99_ms": 1923.256,
-  "elapsed_sec": 62.363356187
+  "successful": 44955,
+  "failed": 45,
+  "throughput_rps": 712.3579019529252,
+  "dropout_percent": 0.1,
+  "p50_ms": 406.819,
+  "p95_ms": 657.21,
+  "p99_ms": 2000.18,
+  "elapsed_sec": 63.107322705
 }
