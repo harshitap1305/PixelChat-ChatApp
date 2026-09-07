@@ -67,6 +67,16 @@ git pull origin main
 
 ---
 
+## Performance Optimizations Applied (For Load Testing)
+
+To achieve maximum throughput during load testing, the following optimizations have been applied to this architecture:
+1. **Load Generator Connection Pooling:** Fixed the HTTP client to fully read response bodies, enabling connection reuse.
+2. **Load Balancer Thundering Herd Fix:** The Load Balancer computes the `isOverloaded` state directly from atomic `in_flight` counters instead of lagging health checks.
+3. **Valkey AOF Disabled:** `valkey_primary.sh` runs with `--appendonly no` to disable disk writes, unlocking maximum in-memory throughput.
+4. **Valkey Connection Pool:** `feed_store.py` uses an explicit connection pool of 200 to prevent queuing delays.
+
+---
+
 ## STEP 0 — Generate TLS Certificates (all machines)
 
 Run on **every machine** (Sys1, Sys2, Sys3, Sys4):
