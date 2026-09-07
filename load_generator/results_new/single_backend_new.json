@@ -1,0 +1,14 @@
+{
+  "experiment": "single_backend_new",
+  "target_url": "https://10.1.75.51:5271/message",
+  "requests": 45000,
+  "concurrency": 350,
+  "successful": 44867,
+  "failed": 133,
+  "throughput_rps": 719.4449231607067,
+  "dropout_percent": 0.29555555555555557,
+  "p50_ms": 414.674,
+  "p95_ms": 642.715,
+  "p99_ms": 1923.256,
+  "elapsed_sec": 62.363356187
+}

@@ -1,0 +1,14 @@
+{
+  "experiment": "three_backends_new",
+  "target_url": "https://10.1.75.51:5269/message",
+  "requests": 45000,
+  "concurrency": 350,
+  "successful": 44005,
+  "failed": 995,
+  "throughput_rps": 463.763581922377,
+  "dropout_percent": 2.2111111111111112,
+  "p50_ms": 526.995,
+  "p95_ms": 1375.915,
+  "p99_ms": 3501.83,
+  "elapsed_sec": 94.886708908
+}
