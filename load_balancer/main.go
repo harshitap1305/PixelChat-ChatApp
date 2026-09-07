@@ -51,6 +51,11 @@ type LoadBalancer struct {
 	metrics  Metrics
 }
 
+// overloadThreshold is the max in-flight requests per backend before it is
+// considered overloaded and deprioritised by P2C. Using real-time in_flight
+// instead of stale health-check scores prevents the Thundering Herd problem.
+const overloadThreshold int64 = 200
+
 // nextBackend returns the next alive backend using Power of Two Choices (P2C)
 func (lb *LoadBalancer) nextBackend() *Backend {
 	n := len(lb.backends)
@@ -143,7 +148,8 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 				if err := json.NewDecoder(resp.Body).Decode(&h); err == nil {
 					score := b.computeLoadScore(h)
 					b.SetLoadScore(score)
-					b.UpdateOverloaded(score, 200.0, 150.0) // Relaxed Hysteresis thresholds
+					// NOTE: overloaded flag is now computed from live in_flight in IsOverloaded().
+					// We keep the score for monitoring/status endpoints only.
 				}
 				resp.Body.Close()
 

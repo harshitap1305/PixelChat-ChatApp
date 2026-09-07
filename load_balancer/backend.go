@@ -16,12 +16,11 @@ type BackendHealth struct {
 
 // Backend represents a single upstream server in the pool.
 type Backend struct {
-	URL        *url.URL
-	alive      atomic.Bool
-	overloaded atomic.Bool
-	loadScore  atomic.Value // stores float64
-	inFlight   atomic.Int64
-	proxy      *httputil.ReverseProxy
+	URL       *url.URL
+	alive     atomic.Bool
+	loadScore atomic.Value // stores float64 — for monitoring only
+	inFlight  atomic.Int64
+	proxy     *httputil.ReverseProxy
 }
 
 // IsAlive returns the current health status.
@@ -64,12 +63,8 @@ func (b *Backend) LoadScore() float64 {
 	return 0
 }
 
-func (b *Backend) UpdateOverloaded(score, threshHigh, threshLow float64) {
-	if !b.overloaded.Load() && score > threshHigh {
-		b.overloaded.Store(true)
-	} else if b.overloaded.Load() && score < threshLow {
-		b.overloaded.Store(false)
-	}
+// IsOverloaded returns true if the backend has too many live in-flight requests.
+// Uses real-time atomic in_flight, NOT stale health-check score.
+func (b *Backend) IsOverloaded() bool {
+	return b.inFlight.Load() > overloadThreshold
 }
-
-func (b *Backend) IsOverloaded() bool { return b.overloaded.Load() }
