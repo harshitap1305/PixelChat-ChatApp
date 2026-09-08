@@ -294,55 +294,75 @@ curl -k https://10.1.75.51:6270/health
 ## STEP 9 — Run Load Generator Experiments
 
 Run from your **local PC** or from **Sys1** in a separate tmux pane. 
-**Note:** We use the new `-mode message` flag to spam the `/message` endpoint directly via POST requests.
+**Note:** We use the new `-mode` flag to test read vs write performance and generate utilization plots.
 
-### Experiment 1 — Single Backend (bypasses LB, hits Sys3 directly)
+### Experiment 1 — Single Backend: Write-only
 
 ```bash
 cd ~/PixelChat-ChatApp/load_generator
-./load_generator \
-  -url         https://10.1.75.51:5271 \
-  -requests    15000 \
-  -concurrency 150 \
-  -experiment  single_backend \
-  -path        /message \
-  -mode        message \
-  -out         ./results
+./load_generator -url https://10.1.75.51:5271 -requests 20000 -concurrency 200 \
+  -experiment single_write -mode message -users 100 -min-len 20 -max-len 300 \
+  -health-urls https://10.1.75.51:5271/health -out ./results
 ```
 
-### Experiment 2 — Three Backends (via Load Balancer)
+### Experiment 2 — Single Backend: Read-only
 
 ```bash
-./load_generator \
-  -url         https://10.1.75.51:5269 \
-  -requests    15000 \
-  -concurrency 150 \
-  -experiment  three_backends \
-  -path        /message \
-  -mode        message \
-  -poll-lb \
-  -out         ./results
+./load_generator -url https://10.1.75.51:5271 -requests 20000 -concurrency 200 \
+  -experiment single_read -mode feed \
+  -health-urls https://10.1.75.51:5271/health -out ./results
 ```
 
-### Experiment 3 — Stress Test with Heavy Load
+### Experiment 3 — Single Backend: Mixed (80% Writes / 20% Reads)
 
 ```bash
-./load_generator \
-  -url         https://10.1.75.51:5269 \
-  -requests    50000 \
-  -concurrency 500 \
-  -experiment  stress_50k \
-  -path        /message \
-  -mode        message \
-  -poll-lb \
-  -out         ./results
+./load_generator -url https://10.1.75.51:5271 -requests 20000 -concurrency 200 \
+  -experiment single_mixed -mode mixed -read-ratio 0.2 -users 100 -min-len 20 -max-len 300 \
+  -health-urls https://10.1.75.51:5271/health -out ./results
+```
+
+### Experiment 4 — Three Backends (LB): Write-only
+
+```bash
+./load_generator -url https://10.1.75.51:5269 -requests 20000 -concurrency 200 \
+  -experiment lb_write -mode message -users 100 -min-len 20 -max-len 300 \
+  -health-urls https://10.1.75.51:5270/health,https://10.1.75.51:5271/health,https://10.1.75.51:5272/health -out ./results
+```
+
+### Experiment 5 — Three Backends (LB): Read-only
+
+```bash
+./load_generator -url https://10.1.75.51:5269 -requests 20000 -concurrency 200 \
+  -experiment lb_read -mode feed \
+  -health-urls https://10.1.75.51:5270/health,https://10.1.75.51:5271/health,https://10.1.75.51:5272/health -out ./results
+```
+
+### Experiment 6 — Three Backends (LB): Mixed (80% Writes / 20% Reads)
+
+```bash
+./load_generator -url https://10.1.75.51:5269 -requests 20000 -concurrency 200 \
+  -experiment lb_mixed -mode mixed -read-ratio 0.2 -users 100 -min-len 20 -max-len 300 \
+  -health-urls https://10.1.75.51:5270/health,https://10.1.75.51:5271/health,https://10.1.75.51:5272/health \
+  -out ./results
+```
+
+### STEP 10 — Generate Report Plots
+
+Once all experiments have run, generate the assignment plots:
+
+```bash
+# Install dependencies if needed
+pip install matplotlib pandas numpy
+
+# Generate 10 plots into the plots/ directory
+python3 plot_results.py --results results/results.csv --utilization results/utilization.csv --out plots/
 ```
 
 Results are saved to:
-- `results/single_backend.json`
-- `results/three_backends.json`
-- `results/stress_50k.json`
-- `results/results.csv` ← cumulative comparison table for your report
+- `results/*.json`
+- `results/results.csv` ← cumulative comparison table
+- `results/utilization.csv` ← per-system CPU/Valkey metrics
+- `plots/*.png` ← The charts for your report!
 
 ---
 
