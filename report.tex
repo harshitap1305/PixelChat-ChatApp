@@ -218,11 +218,12 @@ The system is deployed across four machines sharing a single external IP address
     \draw[arrow] (lb) -- (sys4);
 
     % Writes (All Backends write to Primary on Sys2)
-    \draw[writearrow] (sys2) -- node[above, font=\tiny\bfseries]{writes} (vk2);
+    \draw[writearrow] (sys2.north east) -- node[above, font=\tiny\bfseries]{writes} (vk2.north west);
     \draw[writearrow] (sys3) -- node[above, font=\tiny\bfseries, pos=0.3]{writes} (vk2);
     \draw[writearrow] (sys4) -- node[above, font=\tiny\bfseries, pos=0.25]{writes} (vk2);
 
-    % Reads (Local reads from local Valkey instance)
+    % Reads (Each backend reads locally from its local Valkey node)
+    \draw[readarrow] (vk2.south west) -- node[below, font=\tiny\bfseries]{reads} (sys2.south east);
     \draw[readarrow] (vk3) -- node[below, font=\tiny\bfseries]{reads} (sys3);
     \draw[readarrow] (vk4) -- node[below, font=\tiny\bfseries]{reads} (sys4);
 
