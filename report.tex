@@ -73,8 +73,8 @@
 % ── Page style ────────────────────────────────────────────────────────────────
 \pagestyle{fancy}
 \fancyhf{}
-\rhead{CSD Assignment 2 --- Load Balancer}
-\lhead{PixelChat}
+\rhead{CSD Lab 6 --- Dynamic Load Balancing}
+\lhead{Harshita Patidar}
 \cfoot{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
@@ -121,24 +121,23 @@
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{accentblue} PixelChat}\\[0.4cm]
-    {\Large Secure Group Chat with Performance-Based}\\[0.1cm]
-    {\Large Dynamic Load Balancing}\\[1.5cm]
+    {\Huge\bfseries\color{accentblue} Lab 6: Dynamic Load Balancing}\\[0.3cm]
+    {\Huge\bfseries\color{accentblue} and Persistent Chat}\\[0.5cm]
+    {\Large Horizontally Scaled Distributed System with Performance-Based Routing}\\[1.5cm]
     \rule{\textwidth}{1.5pt}\\[0.4cm]
-    {\large\bfseries Assignment 2 --- Concurrent and Distributed Systems}\\[0.2cm]
+    {\large\bfseries Concurrent and Distributed Systems (CSD)}\\[0.2cm]
     \rule{\textwidth}{1pt}\\[2cm]
 
     \begin{tabular}{ll}
-        \textbf{Name:}           & Harshita Patidar \\[0.3cm]
-        \textbf{Branch:}         & \texttt{harshita-loadbalancer} \\[0.3cm]
-        \textbf{Language:}       & Python (Backend) + Go (Load Balancer + Generator) \\[0.3cm]
-        \textbf{Framework:}      & FastAPI + Uvicorn (ASGI) \\[0.3cm]
-        \textbf{In-Memory Store:}& Valkey (open-source Redis-compatible) \\[0.3cm]
-        \textbf{Date:}           & \today \\
+        \textbf{Author:}          & Harshita Patidar \\[0.3cm]
+        \textbf{Git Branch:}      & \texttt{harshita-loadbalancer} \\[0.3cm]
+        \textbf{Implementation:}  & Python / FastAPI (Backend) + Go (Load Balancer \& Generator) \\[0.3cm]
+        \textbf{Distributed Database:}& Valkey Primary-Replica Replication (In-Memory / AOF Persistent) \\[0.3cm]
+        \textbf{Date:}            & \today \\
     \end{tabular}
 
     \vfill
-    {\small\textit{This report presents the design, implementation, and experimental evaluation of a performance-based dynamic load balancing system deployed over three backend nodes for the PixelChat secure group-chat application.}}
+    {\small\textit{This report details the architectural design, implementation, and empirical evaluation of a high-throughput, performance-based dynamic load balancing system deployed across three backend nodes, featuring distributed data replication, strict deduplication, and active health monitoring.}}
 \end{titlepage}
 
 \tableofcontents
@@ -148,27 +147,31 @@
 \section{Introduction}
 %─────────────────────────────────────────────────────────────────────────────
 
-PixelChat is a secure, multi-room group-chat web application featuring AES-GCM end-to-end encryption, ECDSA per-user signing, HMAC-SHA256 tamper detection, and real-time WebSocket communication. This report documents its extension to a horizontally scaled, load-balanced deployment across three backend servers.
+This report presents the system architecture, implementation details, and empirical benchmark evaluation for \textbf{Lab 6: Dynamic Load Balancing and Persistent Chat}. The goal of this assignment is to extend a secure, persistent group-chat backend into a horizontally scaled, distributed application deployed across three dedicated lab machines behind a unified Load Balancer.
 
-\subsection{Assignment Objectives}
+\subsection{Evolution from Round-Robin to Dynamic Load Balancing}
+
+At the inception of this project, the deployment relied on a basic static \textbf{Round-Robin} load balancer. While static Round-Robin provides naive distribution across operational nodes, it operates blindly without feedback regarding actual machine state. Under heavy burst traffic, heterogeneous query costs (such as broad database fetches versus lightweight message posts), or localized resource contention, Round-Robin inevitably routes traffic into bottlenecked backends, resulting in elevated tail latencies ($p_{99}$) and request dropouts.
+
+To address these limitations, we upgraded the system to a \textbf{Performance-Based Dynamic Load Balancer} powered by the \emph{Power-of-Two-Choices (P2C)} algorithm. The upgraded balancer continuously monitors real-time telemetry from each backend node---including active in-flight HTTP requests, CPU utilization percentage, active WebSocket connections, and Valkey database round-trip time (RTT). By dynamically evaluating a composite load score, the load balancer intelligently routes incoming traffic away from saturated nodes, optimizes system throughput, and automatically isolates unresponsive or failing backends.
+
+\subsection{Assignment Scope and Requirements}
+
+The implementation strictly satisfies all core directives outlined in the Lab 6 specification:
 
 \begin{enumerate}[label=\textbf{\arabic*.}]
-    \item Deploy the backend across three lab systems (Sys2, Sys3, Sys4) behind a single Load Balancer served from Sys1.
-    \item Implement \textbf{Performance-Based Dynamic Load Balancing} --- fixed round-robin alone is \emph{not} acceptable.
-    \item \textbf{Detect unhealthy backends} and cease routing requests to them automatically.
-    \item Expose required API routes: \texttt{POST /message} and \texttt{GET /feed}.
-    \item Ensure \textbf{no duplicate messages}, even when the same \texttt{msg\_id} is submitted through any backend.
-    \item All backends must \textbf{share the same chat data} in real time.
-    \item Develop a custom \textbf{load generator} with variable concurrency and message parameters, and generate performance and utilisation plots.
+    \item \textbf{Three-Node Backend Deployment}: Deploy the backend application across three designated backend systems (\texttt{Sys2}, \texttt{Sys3}, and \texttt{Sys4}). All client traffic enters through a single Load Balancer entrypoint on \texttt{Sys1}.
+    \item \textbf{Performance-Based Dynamic Load Balancing}: Replace fixed Round-Robin with dynamic metric-driven routing. Automatically detect unhealthy or degraded backends and suspend traffic delivery to them.
+    \item \textbf{Threshold and Routing Optimization}: Define and tune optimal load-switching thresholds to maximize throughput and minimize request latency under high concurrency.
+    \item \textbf{Shared Database Persistence and Strict Deduplication}: All backend instances must access a shared persistent data layer. Every message is assigned a unique message ID (\texttt{msg\_id}), ensuring strict idempotency and duplicate prevention across retries and failovers.
+    \item \textbf{Standardized API Routes}: Expose exact required gateway routes:
+    \begin{itemize}
+        \item \texttt{POST /message} --- Ingests chat messages with \texttt{client-name} and \texttt{msg} fields.
+        \item \texttt{GET /feed} --- Retrieves persistent chat messages chronologically.
+    \end{itemize}
+    \item \textbf{Custom Load Generator and Comprehensive Evaluation}: Construct a high-concurrency custom load generator in Go to simulate variable user counts, message lengths, and inter-request intervals, generating comprehensive performance plots across single-backend, Round-Robin, and dynamic load balancing topologies.
+    \item \textbf{Preservation of Security and Baseline Features}: Maintain all prior secure application capabilities (AES-GCM encryption, ECDSA digital signatures, HMAC-SHA256 integrity verification, and WebSocket streaming) without simplification or removal.
 \end{enumerate}
-
-\subsection{Existing Application Baseline}
-
-Before this extension, PixelChat already provided: AES-GCM end-to-end encryption, ECDSA-P256 per-user signing, HMAC-SHA256 tamper detection, WebSocket multi-room chat with replies, edits, whispers, file uploads, XP system, and SQLite persistence.
-
-\begin{infobox}
-\textbf{Constraint:} None of the existing security features or application functionality may be removed or simplified.
-\end{infobox}
 
 %─────────────────────────────────────────────────────────────────────────────
 \section{System Architecture}
