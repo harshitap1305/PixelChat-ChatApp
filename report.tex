@@ -160,7 +160,7 @@ To address these limitations, we upgraded the system to a \textbf{Performance-Ba
 The implementation strictly satisfies all core directives outlined in the Lab 6 specification:
 
 \begin{enumerate}[label=\textbf{\arabic*.}]
-    \item \textbf{Three-Node Backend Deployment}: Deploy the backend application across three designated backend systems (\texttt{Sys2}, \texttt{Sys3}, and \texttt{Sys4}). All client traffic enters through a single Load Balancer entrypoint on \texttt{Sys1}.
+    \item \textbf{Three-Node Backend Deployment}: Deploy the backend application across three designated backend systems (\texttt{Sys2}, \texttt{Sys3}, and \texttt{Sys4}). All client traffic enters through a single Load Balancer entrypoint on \texttt{Sys1} (\texttt{http://10.1.75.51:5269}).
     \item \textbf{Performance-Based Dynamic Load Balancing}: Replace fixed Round-Robin with dynamic metric-driven routing. Automatically detect unhealthy or degraded backends and suspend traffic delivery to them.
     \item \textbf{Threshold and Routing Optimization}: Define and tune optimal load-switching thresholds to maximize throughput and minimize request latency under high concurrency.
     \item \textbf{Shared Database Persistence and Strict Deduplication}: All backend instances must access a shared persistent data layer. Every message is assigned a unique message ID (\texttt{msg\_id}), ensuring strict idempotency and duplicate prevention across retries and failovers.
@@ -252,6 +252,9 @@ Sys4 & Backend-3       & 5000 & 5272 \\
 Sys4 & Valkey Replica  & 4000 & 4272 \\
 \bottomrule
 \end{tabular}
+
+\vspace{0.3cm}
+\textbf{Submitted Load Balancer Entrypoint URL:} \texttt{http://10.1.75.51:5269}
 \end{center}
 
 \subsection{Data Flow}
