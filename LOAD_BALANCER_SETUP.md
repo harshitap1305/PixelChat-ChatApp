@@ -299,7 +299,7 @@ Run from your **local PC** or from **Sys1** in a separate tmux pane.
 ### Experiment 1 — Single Backend: Write-only
 
 ```bash
-cd ~/PixelChat-ChatApp/load_generator
+cd PixelChat-ChatApp/load_generator
 ./load_generator -url https://10.1.75.51:5271 -requests 20000 -concurrency 200 \
   -experiment single_write -mode message -users 100 -min-len 20 -max-len 300 \
   -health-urls https://10.1.75.51:5271/health -out ./results
