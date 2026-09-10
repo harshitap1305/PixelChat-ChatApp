@@ -183,35 +183,55 @@ The system is deployed across four machines sharing a single external IP address
 
 \begin{figure}[H]
 \centering
+\resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
-    node distance=1.5cm and 2.5cm,
-    box/.style={rectangle, rounded corners=4pt, draw, minimum width=2.8cm, minimum height=1.1cm, align=center, font=\small},
-    clientbox/.style={box, fill=gray!15},
+    node distance=1.2cm and 2.0cm,
+    box/.style={rectangle, rounded corners=5pt, draw, minimum width=2.8cm, minimum height=1.1cm, align=center, font=\small},
+    clientbox/.style={box, fill=gray!15, draw=gray!80!black, thick},
     lbbox/.style={box, fill=accentblue!15, draw=accentblue, thick},
-    bebox/.style={box, fill=accentgreen!15, draw=accentgreen, thick},
-    vkbox/.style={box, fill=orange!15, draw=orange, thick},
-    arrow/.style={->, thick, >=stealth}
+    bebox/.style={box, fill=accentgreen!15, draw=accentgreen!80!black, thick},
+    vkpbox/.style={box, fill=orange!25, draw=orange!90!black, thick},
+    vkrbox/.style={box, fill=orange!12, draw=orange!80!black, thick},
+    arrow/.style={->, thick, >=stealth},
+    writearrow/.style={->, thick, accentblue!80!black, >=stealth},
+    readarrow/.style={->, thick, dashed, accentgreen!80!black, >=stealth},
+    reparrow/.style={->, thick, dashed, orange!90!black, >=stealth}
 ]
+    % Node layout
     \node[clientbox] (client) {Clients\\(Browser)};
-    \node[lbbox, right=2.5cm of client] (lb) {Load Balancer\\(Sys1 : 5269)\\Go};
-    \node[bebox, above right=0.5cm and 2.2cm of lb] (sys2) {Backend-1 (Sys2)\\FastAPI :5270};
-    \node[bebox, right=2.2cm of lb] (sys3) {Backend-2 (Sys3)\\FastAPI :5271};
-    \node[bebox, below right=0.5cm and 2.2cm of lb] (sys4) {Backend-3 (Sys4)\\FastAPI :5272};
-    \node[vkbox, right=2.2cm of sys2] (vkp) {Valkey Primary\\(Sys2 :4270)};
-    \node[vkbox, right=2.2cm of sys3] (vkr) {Valkey Replicas\\(Sys3/4 :4000)};
+    \node[lbbox, right=1.6cm of client] (lb) {Load Balancer\\(Sys1 : 5269)\\Go};
 
+    \node[bebox, above right=0.8cm and 1.6cm of lb] (sys2) {Backend-1 (Sys2)\\FastAPI :5270};
+    \node[bebox, right=1.6cm of lb] (sys3) {Backend-2 (Sys3)\\FastAPI :5271};
+    \node[bebox, below right=0.8cm and 1.6cm of lb] (sys4) {Backend-3 (Sys4)\\FastAPI :5272};
+
+    \node[vkpbox, right=2.0cm of sys2] (vk2) {Valkey Primary\\(Sys2 :4270)};
+    \node[vkrbox, right=2.0cm of sys3] (vk3) {Valkey Replica 1\\(Sys3 :4271)};
+    \node[vkrbox, right=2.0cm of sys4] (vk4) {Valkey Replica 2\\(Sys4 :4272)};
+
+    % Client to LB
     \draw[arrow] (client) -- (lb);
+
+    % LB to Backends
     \draw[arrow] (lb) -- (sys2);
     \draw[arrow] (lb) -- (sys3);
     \draw[arrow] (lb) -- (sys4);
-    \draw[arrow] (sys2) -- node[above, font=\tiny]{writes} (vkp);
-    \draw[arrow] (sys3) -- (vkp);
-    \draw[arrow] (sys4) -- (vkp);
-    \draw[arrow, dashed] (vkp) -- node[right, font=\tiny]{replicate} (vkr);
-    \draw[arrow, dashed] (vkr) -- node[below, font=\tiny]{reads} (sys3);
-    \draw[arrow, dashed] (vkr) -- (sys4);
-\end{tikzpicture}
-\caption{Deployment topology: three backends behind a Go Load Balancer, sharing data via Valkey primary-replica replication.}
+
+    % Writes (All Backends write to Primary on Sys2)
+    \draw[writearrow] (sys2) -- node[above, font=\tiny\bfseries]{writes} (vk2);
+    \draw[writearrow] (sys3) -- node[above, font=\tiny\bfseries, pos=0.3]{writes} (vk2);
+    \draw[writearrow] (sys4) -- node[above, font=\tiny\bfseries, pos=0.25]{writes} (vk2);
+
+    % Reads (Local reads from local Valkey instance)
+    \draw[readarrow] (vk3) -- node[below, font=\tiny\bfseries]{reads} (sys3);
+    \draw[readarrow] (vk4) -- node[below, font=\tiny\bfseries]{reads} (sys4);
+
+    % Primary-Replica Replication
+    \draw[reparrow] (vk2) -- node[right, font=\tiny\bfseries]{replicate} (vk3);
+    \draw[reparrow] (vk2) to[out=290, in=70] node[right, font=\tiny\bfseries]{replicate} (vk4);
+\end{tikzpicture}%
+}
+\caption{Deployment topology across 4 systems: three FastAPI backends behind a Go Load Balancer, with a 3-node Valkey cluster (1 Primary on Sys2, 2 Replicas on Sys3 and Sys4) providing shared persistent state.}
 \end{figure}
 
 \subsection{Port Allocation}
