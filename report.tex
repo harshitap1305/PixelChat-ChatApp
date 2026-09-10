@@ -185,37 +185,30 @@ The system is deployed across four machines sharing a single external IP address
 \centering
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[
-    node distance=1.2cm and 1.8cm,
-    box/.style={rectangle, rounded corners=5pt, draw, minimum width=2.8cm, minimum height=1.1cm, align=center, font=\small},
+    node distance=1.4cm and 2.2cm,
+    box/.style={rectangle, rounded corners=5pt, draw, minimum width=3.0cm, minimum height=1.2cm, align=center, font=\small},
     clientbox/.style={box, fill=gray!15, draw=gray!80!black, thick},
     lbbox/.style={box, fill=accentblue!15, draw=accentblue, thick},
     bebox/.style={box, fill=accentgreen!15, draw=accentgreen!80!black, thick},
     vkpbox/.style={box, fill=orange!25, draw=orange!90!black, thick},
     vkrbox/.style={box, fill=orange!12, draw=orange!80!black, thick},
-    sqlbox/.style={cylinder, shape border rotate=90, draw=purple!80!black, fill=purple!15, aspect=0.3, minimum width=1.8cm, align=center, font=\tiny\bfseries},
     arrow/.style={->, thick, >=stealth},
     writearrow/.style={->, thick, accentblue!80!black, >=stealth},
     readarrow/.style={->, thick, dashed, accentgreen!80!black, >=stealth},
-    reparrow/.style={->, thick, dashed, orange!90!black, >=stealth},
-    sqlarrow/.style={<->, thick, purple!80!black, >=stealth}
+    reparrow/.style={->, thick, dashed, orange!90!black, >=stealth}
 ]
     % Node layout
     \node[clientbox] (client) {Clients\\(Browser)};
-    \node[lbbox, right=1.6cm of client] (lb) {Load Balancer\\(Sys1 : 5269)\\Go};
+    \node[lbbox, right=2.0cm of client] (lb) {Load Balancer\\(Sys1 : 5269)\\Go};
 
-    \node[bebox, above right=1.2cm and 1.6cm of lb] (sys2) {Backend-1 (Sys2)\\FastAPI :5270};
-    \node[bebox, right=1.6cm of lb] (sys3) {Backend-2 (Sys3)\\FastAPI :5271};
-    \node[bebox, below right=1.2cm and 1.6cm of lb] (sys4) {Backend-3 (Sys4)\\FastAPI :5272};
+    \node[bebox, above right=1.6cm and 2.0cm of lb] (sys2) {Backend-1 (Sys2)\\FastAPI :5270};
+    \node[bebox, right=2.0cm of lb] (sys3) {Backend-2 (Sys3)\\FastAPI :5271};
+    \node[bebox, below right=1.6cm and 2.0cm of lb] (sys4) {Backend-3 (Sys4)\\FastAPI :5272};
 
-    % Local SQLite Databases (Accounts / Rooms / Sessions)
-    \node[sqlbox, above=0.3cm of sys2] (db2) {SQLite DB\\(chat.db)};
-    \node[sqlbox, above=0.3cm of sys3] (db3) {SQLite DB\\(chat.db)};
-    \node[sqlbox, above=0.3cm of sys4] (db4) {SQLite DB\\(chat.db)};
-
-    % Distributed Valkey Cluster (Hot-Path Chat Feed)
-    \node[vkpbox, right=2.0cm of sys2] (vk2) {Valkey Primary\\(Sys2 :4270)};
-    \node[vkrbox, right=2.0cm of sys3] (vk3) {Valkey Replica 1\\(Sys3 :4271)};
-    \node[vkrbox, right=2.0cm of sys4] (vk4) {Valkey Replica 2\\(Sys4 :4272)};
+    % 3 Valkey Nodes (One on each backend system)
+    \node[vkpbox, right=2.5cm of sys2] (vk2) {Valkey Primary\\(Sys2 :4270)};
+    \node[vkrbox, right=2.5cm of sys3] (vk3) {Valkey Replica 1\\(Sys3 :4271)};
+    \node[vkrbox, right=2.5cm of sys4] (vk4) {Valkey Replica 2\\(Sys4 :4272)};
 
     % Client to LB
     \draw[arrow] (client) -- (lb);
@@ -225,27 +218,22 @@ The system is deployed across four machines sharing a single external IP address
     \draw[arrow] (lb) -- (sys3);
     \draw[arrow] (lb) -- (sys4);
 
-    % Backends to local SQLite DBs (Auth / Users / Rooms)
-    \draw[sqlarrow] (sys2) -- (db2);
-    \draw[sqlarrow] (sys3) -- (db3);
-    \draw[sqlarrow] (sys4) -- (db4);
-
     % Writes (All Backends write chat messages to Primary on Sys2)
     \draw[writearrow] (sys2.north east) -- node[above, font=\tiny\bfseries]{writes} (vk2.north west);
-    \draw[writearrow] (sys3) -- node[above, font=\tiny\bfseries, pos=0.3]{writes} (vk2);
-    \draw[writearrow] (sys4) -- node[above, font=\tiny\bfseries, pos=0.25]{writes} (vk2);
+    \draw[writearrow] (sys3.east) -- node[above, font=\tiny\bfseries, pos=0.45]{writes} (vk2.south west);
+    \draw[writearrow] (sys4.east) -- node[above, font=\tiny\bfseries, pos=0.3]{writes} (vk2.south);
 
-    % Reads (Each backend reads chat messages locally from its local Valkey node)
+    % Reads (Each backend reads chat messages locally from its Valkey node)
     \draw[readarrow] (vk2.south west) -- node[below, font=\tiny\bfseries]{reads} (sys2.south east);
-    \draw[readarrow] (vk3) -- node[below, font=\tiny\bfseries]{reads} (sys3);
-    \draw[readarrow] (vk4) -- node[below, font=\tiny\bfseries]{reads} (sys4);
+    \draw[readarrow] (vk3.west) -- node[below, font=\tiny\bfseries]{reads} (sys3.east);
+    \draw[readarrow] (vk4.west) -- node[below, font=\tiny\bfseries]{reads} (sys4.east);
 
     % Primary-Replica Replication
-    \draw[reparrow] (vk2) -- node[right, font=\tiny\bfseries]{replicate} (vk3);
-    \draw[reparrow] (vk2) to[out=290, in=70] node[right, font=\tiny\bfseries]{replicate} (vk4);
+    \draw[reparrow] (vk2.south) -- node[right, font=\tiny\bfseries]{replicate} (vk3.north);
+    \draw[reparrow] (vk3.south) -- node[right, font=\tiny\bfseries]{replicate} (vk4.north);
 \end{tikzpicture}%
 }
-\caption{Deployment topology across 4 systems: three FastAPI backends behind a Go Load Balancer. Each backend maintains a local SQLite database (\texttt{chat.db}) for user account credentials and sessions, while a 3-node Valkey cluster (1 Primary on Sys2, 2 Replicas on Sys3 and Sys4) manages real-time persistent chat message replication.}
+\caption{Deployment topology across 4 systems: three FastAPI backends behind a Go Load Balancer, sharing data across a 3-node Valkey cluster (1 Primary on Sys2, 2 Replicas on Sys3 and Sys4).}
 \end{figure}
 
 \subsection{Port Allocation}
