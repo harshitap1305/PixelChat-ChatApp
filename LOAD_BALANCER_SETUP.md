@@ -251,18 +251,13 @@ BACKEND_NAME=lb-node
 **In tmux on Sys1 — open 2 panes:**
 
 ```bash
-# Pane 1: Load Balancer (Internal Port 5000)
+# Pane 1: Load Balancer (HTTP Mode for Leaderboard, forwarding to HTTPS Backends)
 cd ~/PixelChat-ChatApp/load_balancer
+pkill -f load_balancer
+go build -o load_balancer main.go
 ./load_balancer \
   -port 5000 \
-  -backends "https://10.1.75.51:5270,https://10.1.75.51:5271,https://10.1.75.51:5272" \
-  -cert ../cert.pem \
-  -key  ../key.pem
-
-# Pane 2: Frontend static server (Internal Port 3000)
-cd ~/PixelChat-ChatApp
-python3 client/serve.py
-# → https://0.0.0.0:3000 (external: https://10.1.75.51:3269)
+  -backends "https://10.1.75.51:5270,https://10.1.75.51:5271,https://10.1.75.51:5272"
 ```
 
 ---
