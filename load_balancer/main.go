@@ -271,8 +271,8 @@ func main() {
 	healthInterval := flag.Duration("health-interval", 2*time.Second,
 		"How often to health-check each backend.")
 
-	certFile := flag.String("cert", "../cert.pem",
-		"Path to TLS certificate (PEM). Pass empty string to run plain HTTP.")
+	certFile := flag.String("cert", "",
+		"Path to TLS certificate (PEM). Pass empty string to run plain HTTP (default).")
 
 	keyFile := flag.String("key", "../key.pem",
 		"Path to TLS private key (PEM).")
