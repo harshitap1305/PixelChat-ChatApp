@@ -69,20 +69,33 @@ async def insert_if_new(room_id: str, msg_id: str, payload: dict) -> bool:
     return bool(inserted)
 
 
-async def get_all(room_id: str) -> List[Dict]:
+async def get_all(room_id: str, limit: int = 0) -> List[Dict]:
     """
-    Fetch all messages for a room, in chronological order.
-    Reads from the local replica.
+    Fetch messages for a room in chronological order.
+    limit=0 means all; limit=N returns the latest N messages.
+    Reads from the local replica; falls back to primary if unreachable.
     """
     if _replica is None:
         raise RuntimeError("Feed store not initialized")
-        
-    msg_ids = await _replica.zrange(f"msgorder:{room_id}", 0, -1)
-    if not msg_ids:
-        return []
-        
-    payloads = await _replica.hmget(f"msg:{room_id}", msg_ids)
-    
+
+    # Push limit into Valkey — never fetch 19999 keys when only 100 are needed
+    start_rank = -limit if limit > 0 else 0   # ZRANGE -N -1 = latest N
+
+    try:
+        msg_ids = await _replica.zrange(f"msgorder:{room_id}", start_rank, -1)
+        if not msg_ids:
+            return []
+        payloads = await _replica.hmget(f"msg:{room_id}", msg_ids)
+    except Exception:
+        # Replica is down or too slow — fall back to primary
+        try:
+            msg_ids = await _primary.zrange(f"msgorder:{room_id}", start_rank, -1)
+            if not msg_ids:
+                return []
+            payloads = await _primary.hmget(f"msg:{room_id}", msg_ids)
+        except Exception as e:
+            raise RuntimeError(f"Both replica and primary are unavailable: {e}")
+
     messages = []
     for p in payloads:
         if p:
@@ -161,14 +174,23 @@ async def delete_room_messages(room_id: str) -> None:
 
 async def probe_latency() -> float:
     """
-    Ping the primary and return latency in ms.
+    Ping the local replica and return latency in ms.
+    Falls back to primary if replica is unreachable (returns negative to signal degraded state).
     """
-    if _primary is None:
-        return 0.0
-        
     start = time.perf_counter()
     try:
-        await _primary.ping()
-        return (time.perf_counter() - start) * 1000.0
+        if _replica is not None:
+            await _replica.ping()
+            return (time.perf_counter() - start) * 1000.0
     except Exception:
-        return -1.0
+        pass
+
+    # Replica down — try primary
+    try:
+        if _primary is not None:
+            await _primary.ping()
+            return -1.0  # negative signals replica is down (but primary alive)
+    except Exception:
+        pass
+
+    return -1.0
