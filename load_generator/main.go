@@ -357,7 +357,7 @@ func main() {
 		"Mode: 'message' (POST /message only), 'feed' (GET /feed only),\n"+
 			"      'mixed' (both, controlled by -read-ratio), 'health' (GET /health)")
 	writePath   := flag.String("path",         "/message",                 "Path for writes / non-mixed modes.")
-	readPath    := flag.String("feed-path",    "/feed?limit=100",          "Path for reads in feed/mixed mode.")
+	readPath    := flag.String("feed-path",    "/feed?limit=80",           "Path for reads in feed/mixed mode.")
 	pollLB      := flag.Bool("poll-lb",        false,                      "Periodically log /lb/status.")
 	readRatio   := flag.Float64("read-ratio",  0.2,                        "Fraction of mixed-mode requests that are GET /feed (0.0–1.0).")
 
