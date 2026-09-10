@@ -34,7 +34,13 @@ def generate_self_signed_cert(cert_path="cert.pem", key_path="key.pem"):
         # Valid for 1 year
         datetime.datetime.utcnow() + datetime.timedelta(days=365)
     ).add_extension(
-        x509.SubjectAlternativeName([x509.DNSName(u"localhost"), x509.DNSName(u"127.0.0.1"), x509.DNSName(u"10.50.1.224")]),
+        x509.SubjectAlternativeName([
+            x509.DNSName(u"localhost"),
+            x509.IPAddress(__import__("ipaddress").ip_address(u"127.0.0.1")),
+            x509.IPAddress(__import__("ipaddress").ip_address(u"10.1.75.51")),   # shared lab IP
+            x509.IPAddress(__import__("ipaddress").ip_address(u"10.50.1.224")),  # old lab IP
+            x509.IPAddress(__import__("ipaddress").ip_address(u"0.0.0.0")),
+        ]),
         critical=False,
     ).sign(private_key, hashes.SHA256())
 

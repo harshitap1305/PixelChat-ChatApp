@@ -18,7 +18,12 @@ from datetime import datetime
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DB_PATH = Path(__file__).resolve().parent / "chat.db"
+# DB_PATH can be overridden via environment variable so that Sys3 and Sys4
+# can point to Sys2's database mounted via sshfs:
+#   DB_PATH=/mnt/sys2-server/chat.db
+DB_PATH = Path(
+    os.environ.get("DB_PATH", str(Path(__file__).resolve().parent / "chat.db"))
+)
 
 # HMAC_SECRET loaded from environment (set in .env, never hardcoded)
 def _get_hmac_secret() -> bytes:
@@ -54,6 +59,9 @@ CREATE TABLE IF NOT EXISTS messages (
     attachment    TEXT    DEFAULT NULL           -- JSON string of attachment data
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_msg_id 
+    ON messages(msg_id) WHERE msg_id != '';
+
 CREATE TABLE IF NOT EXISTS user_keys (
     username    TEXT PRIMARY KEY,
     public_key  TEXT NOT NULL        -- JSON JWK
@@ -75,6 +83,13 @@ CREATE TABLE IF NOT EXISTS rooms (
     created_at  TEXT    NOT NULL,
     is_public   INTEGER NOT NULL DEFAULT 1,       -- 1=public (browsable), 0=private (code-only)
     avatar      TEXT    NOT NULL DEFAULT '🏰'
+);
+
+CREATE TABLE IF NOT EXISTS session_tokens (
+    token       TEXT    PRIMARY KEY,
+    username    TEXT    NOT NULL,
+    avatar      TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL
 );
 """
 
@@ -108,6 +123,12 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     if "attachment" not in columns:
         conn.execute("ALTER TABLE messages ADD COLUMN attachment TEXT DEFAULT NULL")
         print("[DB] Migration: added attachment column to messages")
+        
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_msg_id ON messages(msg_id) WHERE msg_id != ''")
+        print("[DB] Migration: added UNIQUE index on msg_id")
+    except Exception:
+        pass
 
     cursor = conn.execute("PRAGMA table_info(users)")
     columns = {row[1] for row in cursor.fetchall()}
@@ -135,7 +156,12 @@ def init_db() -> None:
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # WAL mode allows multiple readers + one writer concurrently.
+    # This is critical when Sys3 and Sys4 access the same chat.db via sshfs.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")  # wait up to 5 s if locked
     return conn
+
 
 
 # ── HMAC helpers ──────────────────────────────────────────────────────────────
@@ -260,7 +286,7 @@ def save_message(
     with _connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO messages
+            INSERT OR IGNORE INTO messages
                 (room_id, msg_id, username, avatar, ciphertext, iv, signature, public_key,
                  timestamp, hmac_digest, sig_valid, reply_to, target_user, is_edited, created_at_ts, attachment)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
@@ -565,4 +591,32 @@ def clear_history() -> None:
         conn.execute("DELETE FROM messages")
         conn.execute("DELETE FROM user_keys")
     print("[DB] All message history and user keys cleared.")
+
+
+# ── Session Tokens (Global State) ─────────────────────────────────────────────
+
+def save_session_token(token: str, username: str, avatar: str) -> None:
+    """Store a one-time session token in the DB so any backend can read it."""
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO session_tokens (token, username, avatar, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (token, username, avatar, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+
+
+def consume_session_token(token: str) -> dict | None:
+    """Read a token and immediately delete it (one-time use)."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT username, avatar FROM session_tokens WHERE token = ?",
+            (token,),
+        ).fetchone()
+        if row:
+            conn.execute("DELETE FROM session_tokens WHERE token = ?", (token,))
+            return {"username": row["username"], "avatar": row["avatar"]}
+    return None
+
 

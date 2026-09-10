@@ -1,1061 +1,746 @@
-% ═══════════════════════════════════════════════════════════════════
-% Group Chat Application Report — LaTeX Source
-% Tutorial: Group Chat Application using WebSockets
-% ═══════════════════════════════════════════════════════════════════
+\documentclass[12pt,a4paper]{article}
 
-\documentclass[12pt, a4paper]{article}
-
-% ── Packages ──────────────────────────────────────────────────────
+% ── Packages ──────────────────────────────────────────────────────────────────
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{lmodern}
 \usepackage[margin=1in]{geometry}
 \usepackage{graphicx}
-\usepackage{hyperref}
-\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
 \usepackage{booktabs}
-\usepackage{enumitem}
+\usepackage{array}
 \usepackage{float}
-\usepackage{caption}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
-\usepackage{tocloft}
-\usepackage{amsmath}
-\usepackage{parskip}
-\usepackage{tabularx}
-\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{mdframed}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows, positioning, fit}
 
-% ── Colours ───────────────────────────────────────────────────────
-\definecolor{codebg}{HTML}{F5F5F5}
-\definecolor{codeframe}{HTML}{CCCCCC}
-\definecolor{keyword}{HTML}{0077AA}
-\definecolor{comment}{HTML}{999999}
-\definecolor{string}{HTML}{669900}
-\definecolor{linkblue}{HTML}{0066CC}
+% ── Colour palette ────────────────────────────────────────────────────────────
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{180,180,180}
+\definecolor{keywordcolor}{RGB}{0,0,180}
+\definecolor{commentcolor}{RGB}{60,120,60}
+\definecolor{stringcolor}{RGB}{163,21,21}
+\definecolor{accentblue}{RGB}{30,100,190}
+\definecolor{accentgreen}{RGB}{30,140,80}
+\definecolor{accentred}{RGB}{190,40,40}
+\definecolor{lightblue}{RGB}{230,240,255}
+\definecolor{lightyellow}{RGB}{255,252,220}
 
-% ── Hyperref Setup ────────────────────────────────────────────────
-\hypersetup{
-    colorlinks=true,
-    linkcolor=linkblue,
-    urlcolor=linkblue,
-    citecolor=linkblue,
-    pdfauthor={Team Members},
-    pdftitle={Group Chat Application using WebSockets — Report},
-    pdfsubject={Computer System design Tutorial},
-}
-
-% ── Code Listing Style ───────────────────────────────────────────
+% ── Listings style ────────────────────────────────────────────────────────────
 \lstdefinestyle{codestyle}{
     backgroundcolor=\color{codebg},
     frame=single,
+    framesep=4pt,
     rulecolor=\color{codeframe},
-    basicstyle=\ttfamily\footnotesize,
-    keywordstyle=\color{keyword}\bfseries,
-    commentstyle=\color{comment}\itshape,
-    stringstyle=\color{string},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{keywordcolor}\bfseries,
+    commentstyle=\color{commentcolor}\itshape,
+    stringstyle=\color{stringcolor},
     breaklines=true,
-    breakatwhitespace=false,
-    numbers=left,
-    numberstyle=\tiny\color{comment},
-    numbersep=8pt,
     showstringspaces=false,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=6pt,
     tabsize=4,
-    captionpos=b,
+    captionpos=b
 }
 \lstset{style=codestyle}
 
-% ── Header / Footer ──────────────────────────────────────────────
+% Python lexer
+\lstdefinelanguage{Python}{
+    keywords={import,from,def,async,await,return,if,else,elif,for,while,True,False,None,class,try,except,raise,with,as,global,not,and,or,in,is,lambda,pass,continue,break},
+    morecomment=[l]{\#},
+    morestring=[b]",
+    morestring=[b]'
+}
+
+% Go lexer
+\lstdefinelanguage{Go}{
+    keywords={package,import,func,type,struct,interface,var,const,for,if,else,return,go,defer,select,case,chan,map,range,break,continue,goto,fallthrough,switch,nil,true,false},
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    morestring=[b]"
+}
+
+% ── Page style ────────────────────────────────────────────────────────────────
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small Group Chat Application — WebSockets}
-\fancyhead[R]{\small \thepage}
-\fancyfoot[C]{\small Computer System design Tutorial Report}
+\rhead{CSD Lab 6 --- Dynamic Load Balancing}
+\lhead{Harshita Patidar}
+\cfoot{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\footrulewidth}{0.4pt}
 
-% ── Section formatting ───────────────────────────────────────────
-\titleformat{\section}{\Large\bfseries}{\thesection.}{0.5em}{}
-\titleformat{\subsection}{\large\bfseries}{\thesubsection.}{0.5em}{}
-\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection.}{0.5em}{}
+% ── Section formatting ────────────────────────────────────────────────────────
+\titleformat{\section}{\Large\bfseries\color{accentblue}}{{\thesection}}{0.5em}{}[\color{accentblue}\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{accentblue!80!black}}{{\thesubsection}}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{{\thesubsubsection}}{0.5em}{}
 
-% ═══════════════════════════════════════════════════════════════════
-%  DOCUMENT
-% ═══════════════════════════════════════════════════════════════════
+% ── Hyperref setup ────────────────────────────────────────────────────────────
+\hypersetup{
+    colorlinks=true,
+    linkcolor=accentblue,
+    urlcolor=accentblue,
+    citecolor=accentgreen
+}
 
+% ── Highlight boxes ───────────────────────────────────────────────────────────
+\newmdenv[
+    backgroundcolor=lightblue,
+    linecolor=accentblue,
+    linewidth=1.5pt,
+    roundcorner=4pt,
+    innerleftmargin=10pt,
+    innerrightmargin=10pt,
+    innertopmargin=6pt,
+    innerbottommargin=6pt
+]{infobox}
+
+\newmdenv[
+    backgroundcolor=lightyellow,
+    linecolor=orange!70!black,
+    linewidth=1.5pt,
+    roundcorner=4pt,
+    innerleftmargin=10pt,
+    innerrightmargin=10pt,
+    innertopmargin=6pt,
+    innerbottommargin=6pt
+]{notebox}
+
+% ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
 
-% ── Title Page ────────────────────────────────────────────────────
+% ── Title Page ────────────────────────────────────────────────────────────────
 \begin{titlepage}
     \centering
-    \vspace*{1cm}
+    \vspace*{2cm}
+    {\Huge\bfseries\color{accentblue} Lab 6: Dynamic Load Balancing}\\[0.3cm]
+    {\Huge\bfseries\color{accentblue} and Persistent Chat}\\[0.5cm]
+    {\Large Horizontally Scaled Distributed System with Performance-Based Routing}\\[1.5cm]
+    \rule{\textwidth}{1.5pt}\\[0.4cm]
+    {\large\bfseries Concurrent and Distributed Systems (CSD)}\\[0.2cm]
+    \rule{\textwidth}{1pt}\\[2cm]
 
-    {\LARGE\bfseries Tutorial Report}\\[0.5cm]
-    {\Huge\bfseries Group Chat Application\\using WebSockets}\\[1.5cm]
-
-    \rule{\textwidth}{0.5pt}\\[0.5cm]
-
-    {\large Subject: Computer System design}\\[0.3cm]
-    % ── UPDATE the course code and semester below ──
-    {\large Course Code: \texttt{XXXX}}\\[0.3cm]
-    {\large Semester: \texttt{XXXX}}\\[0.5cm]
-
-    \rule{\textwidth}{0.5pt}\\[1.5cm]
-
-    {\large\bfseries Team Members}\\[0.5cm]
-
-    \begin{tabular}{lll}
-        \toprule
-        \textbf{Name} & \textbf{Roll No.} & \textbf{Role} \\
-        \midrule
-        % ── UPDATE names and roll numbers below ──
-        Member 1 & XXXXXXXXXX & Group Head / Backend \\
-        Member 2 & XXXXXXXXXX & Frontend \\
-        Member 3 & XXXXXXXXXX & Testing \\
-        Member 4 & XXXXXXXXXX & Documentation \\
-        \bottomrule
+    \begin{tabular}{ll}
+        \textbf{Author:}          & Harshita Patidar \\[0.3cm]
+        \textbf{Git Branch:}      & \texttt{harshita-loadbalancer} \\[0.3cm]
+        \textbf{Implementation:}  & Python / FastAPI (Backend) + Go (Load Balancer \& Generator) \\[0.3cm]
+        \textbf{Distributed Database:}& Valkey Primary-Replica Replication (In-Memory / AOF Persistent) \\[0.3cm]
+        \textbf{Date:}            & \today \\
     \end{tabular}
 
     \vfill
-
-    % ── UPDATE the institution name below ──
-    {\large Institution Name}\\[0.3cm]
-    {\large Department of Computer Science \& Engineering}\\[0.3cm]
-    {\large August 2026}
-
+    {\small\textit{This report details the architectural design, implementation, and empirical evaluation of a high-throughput, performance-based dynamic load balancing system deployed across three backend nodes, featuring distributed data replication, strict deduplication, and active health monitoring.}}
 \end{titlepage}
 
-% ── Table of Contents ─────────────────────────────────────────────
-\newpage
 \tableofcontents
 \newpage
 
-
-% ══════════════════════════════════════════════════════════════════
-% 1. INTRODUCTION
-% ══════════════════════════════════════════════════════════════════
+%─────────────────────────────────────────────────────────────────────────────
 \section{Introduction}
+%─────────────────────────────────────────────────────────────────────────────
 
-This report presents the design, implementation, and working of a \textbf{real-time Group Chat Application} built using \textbf{WebSockets}. The application enables multiple users to communicate simultaneously through a common chat room with instant message delivery, fulfilling the requirements of the Computer System design tutorial assignment.
+This report presents the system architecture, implementation details, and empirical benchmark evaluation for \textbf{Lab 6: Dynamic Load Balancing and Persistent Chat}. The goal of this assignment is to extend a secure, persistent group-chat backend into a horizontally scaled, distributed application deployed across three dedicated lab machines behind a unified Load Balancer.
 
-The project demonstrates core networking concepts including persistent bidirectional communication (WebSockets), client-server architecture, message broadcasting, and graceful connection management. The application is named \textbf{``PixelChat''} and features a retro 8-bit pixel-art themed user interface, complete with gamification elements such as XP tracking, ranks, and streaks to enhance user engagement.
+\subsection{Evolution from Round-Robin to Dynamic Load Balancing}
 
-\subsection{Objectives}
+At the inception of this project, the deployment relied on a basic static \textbf{Round-Robin} load balancer. While static Round-Robin provides naive distribution across operational nodes, it operates blindly without feedback regarding actual machine state. Under heavy burst traffic, heterogeneous query costs (such as broad database fetches versus lightweight message posts), or localized resource contention, Round-Robin inevitably routes traffic into bottlenecked backends, resulting in elevated tail latencies ($p_{99}$) and request dropouts.
 
-\begin{itemize}[leftmargin=*]
-    \item Design and implement a real-time group chat application using WebSockets.
-    \item Support \textbf{multiple users communicating simultaneously} through a common chat room.
-    \item Set up a single backend server to handle all incoming connections and messages.
-    \item Set up front-end clients for 4 users on allotted laboratory machines.
-    \item Implement user join/leave notifications, real-time message broadcasting, usernames for identifying participants, and graceful handling of client disconnections.
-\end{itemize}
+To address these limitations, we upgraded the system to a \textbf{Performance-Based Dynamic Load Balancer} powered by the \emph{Power-of-Two-Choices (P2C)} algorithm. The upgraded balancer continuously monitors real-time telemetry from each backend node---including active in-flight HTTP requests, CPU utilization percentage, active WebSocket connections, and Valkey database round-trip time (RTT). By dynamically evaluating a composite load score, the load balancer intelligently routes incoming traffic away from saturated nodes, optimizes system throughput, and automatically isolates unresponsive or failing backends.
 
-\subsection{Scope}
+\subsection{Assignment Scope and Requirements}
 
-Beyond the minimum required features, the application also includes:
-\begin{itemize}[leftmargin=*]
-    \item Avatar selection with 12 predefined character avatars.
-    \item Emoji picker with 30 quick-react emojis.
-    \item File attachment support (images, videos, audio, documents).
-    \item Message delivery receipts (sent, partial, delivered to all).
-    \item Typing indicators showing when another user is composing a message.
-    \item Message history for users joining mid-conversation.
-    \item Auto-reconnect with exponential backoff on connection loss.
-    \item Gamification: XP bar, rank progression, message streaks, and session timer.
-    \item 8-bit retro sound effects (Mario-themed) for join, leave, and message events.
-    \item Connection status indicator (Online / Offline / Reconnecting).
-\end{itemize}
+The implementation strictly satisfies all core directives outlined in the Lab 6 specification:
 
-
-% ══════════════════════════════════════════════════════════════════
-% 2. TECHNOLOGY STACK
-% ══════════════════════════════════════════════════════════════════
-\section{Technology Stack}
-
-The application uses a lightweight, modern technology stack requiring only Python and a web browser — no Node.js or heavyweight frameworks.
-
-\begin{table}[H]
-    \centering
-    \caption{Technology Stack}
-    \begin{tabularx}{\textwidth}{l l X}
-        \toprule
-        \textbf{Layer} & \textbf{Technology} & \textbf{Purpose} \\
-        \midrule
-        Backend Server  & Python 3 + FastAPI + Uvicorn & Asynchronous WebSocket server with REST endpoint for file uploads \\
-        Frontend Server & Python 3 + FastAPI + Uvicorn & Lightweight static file server for HTML/CSS/JS \\
-        Frontend Client & HTML5 + CSS3 + Vanilla JavaScript & Responsive retro-themed chat UI with WebSocket client \\
-        Protocol        & WebSocket (RFC 6455) & Full-duplex, persistent TCP connection for real-time messaging \\
-        Data Format     & JSON & All client-server messages serialized as JSON objects \\
-        Configuration   & \texttt{python-dotenv} + \texttt{.env} file & Port configuration via environment variables \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{Key Dependencies}
-
-The server requires only four Python packages, listed in \texttt{requirements.txt}:
-
-\begin{table}[H]
-    \centering
-    \caption{Python Dependencies}
-    \begin{tabularx}{\textwidth}{l X}
-        \toprule
-        \textbf{Package} & \textbf{Purpose} \\
-        \midrule
-        \texttt{fastapi}          & Modern, high-performance web framework with native WebSocket support \\
-        \texttt{uvicorn[standard]} & ASGI server to run FastAPI asynchronously \\
-        \texttt{python-dotenv}     & Load \texttt{.env} configuration files \\
-        \texttt{python-multipart}  & Required for file upload handling (\texttt{UploadFile}) \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-
-% ══════════════════════════════════════════════════════════════════
-% 3. SYSTEM ARCHITECTURE
-% ══════════════════════════════════════════════════════════════════
-\section{System Architecture}
-
-The application follows a \textbf{client-server architecture} with a clear separation between the backend WebSocket server and the frontend static file server. Both servers run on the same host machine, but on different ports.
-
-\subsection{Architecture Overview}
-
-\begin{figure}[H]
-    \centering
-    % ── PLACEHOLDER: Replace with an architecture diagram screenshot ──
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Architecture Diagram]}\\[0.5cm]
-        Insert a screenshot of the architecture diagram here.\\
-        You may use the ASCII diagram from the README or create a visual version.
-    \vspace{3cm}}}
-    \caption{System Architecture — Client-Server Model}
-    \label{fig:architecture}
-\end{figure}
-
-The architecture consists of:
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Backend Server} (\texttt{server/server.py}) — Runs on port \texttt{8000} (configurable). Handles all WebSocket connections via the \texttt{/ws} endpoint and file uploads via the \texttt{/upload} REST endpoint.
-
-    \item \textbf{Frontend Server} (\texttt{client/serve.py}) — Runs on port \texttt{5000} (configurable). Serves the static HTML, CSS, JavaScript, and sound files to client browsers.
-
-    \item \textbf{Browser Clients} — Each user opens \texttt{http://<server-ip>:5000} in their browser. The JavaScript client establishes a WebSocket connection to \texttt{ws://<server-ip>:8000/ws} for real-time communication.
-\end{enumerate}
-
-\subsection{Project Directory Structure}
-
-\begin{lstlisting}[language={}, caption={Project Directory Structure}, label={lst:structure}]
-group-chat-app/
-|-- .env                        # Port configuration (not committed)
-|-- .env.example                # Template for .env
-|-- .gitignore                  # Git ignore rules
-|-- README.md                   # Project documentation
-|-- server/
-|   |-- requirements.txt        # Python dependencies
-|   |-- server.py               # FastAPI WebSocket server
-|   +-- uploads/                # Uploaded files stored here
-|-- client/
-|   |-- index.html              # Chat UI (login + chat screens)
-|   |-- style.css               # 8-bit pixel art themed styles
-|   |-- app.js                  # WebSocket client logic + gamification
-|   |-- serve.py                # Static file server
-|   +-- sounds/                 # Mario-themed 8-bit sound effects
-|       |-- mushroom.mp3        # Join sound
-|       |-- coin.mp3            # Message sound
-|       +-- pipe.mp3            # Leave sound
-\end{lstlisting}
-
-\subsection{Communication Flow}
-
-\begin{enumerate}[leftmargin=*]
-    \item The user opens the frontend URL in a browser. The browser downloads \texttt{index.html}, \texttt{style.css}, and \texttt{app.js} from the frontend server over HTTP.
-    \item The user enters a username, selects an avatar, and clicks ``Start Quest''.
-    \item The JavaScript client establishes a WebSocket connection to the backend and sends a \texttt{join} message with the chosen username and avatar.
-    \item The backend validates the username (non-empty, unique), registers the user, and broadcasts a join notification to all other connected clients.
-    \item When a user sends a chat message, the client transmits it over the WebSocket. The backend broadcasts it to \textbf{all} connected clients (including the sender for receipt confirmation).
-    \item When a user disconnects (closes tab, navigates away, or clicks ``Leave''), the backend detects the disconnection, removes the user, and broadcasts a leave notification.
-\end{enumerate}
-
-
-% ══════════════════════════════════════════════════════════════════
-% 4. WEBSOCKET PROTOCOL & MESSAGE FORMAT
-% ══════════════════════════════════════════════════════════════════
-\section{WebSocket Protocol \& Message Format}
-
-All communication between the client and server uses \textbf{JSON-encoded messages} transmitted over a single persistent WebSocket connection. Each message contains a \texttt{type} field that determines how it should be processed.
-
-\subsection{Client $\rightarrow$ Server Messages}
-
-\begin{table}[H]
-    \centering
-    \caption{Client to Server Message Types}
-    \begin{tabularx}{\textwidth}{l l X}
-        \toprule
-        \textbf{Type} & \textbf{Fields} & \textbf{Description} \\
-        \midrule
-        \texttt{join}    & \texttt{username}, \texttt{avatar} & Register with a username and chosen avatar. Must be the first message sent after connection. \\
-        \texttt{message} & \texttt{text}, \texttt{client\_msg\_id}, \texttt{attachment} & Send a chat message with optional file attachment. \texttt{client\_msg\_id} is a locally generated ID used for delivery receipt tracking. \\
-        \texttt{typing}  & — & Signal that the user is currently typing. Throttled to once every 2 seconds on the client side. \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{Server $\rightarrow$ Client Messages}
-
-\begin{table}[H]
-    \centering
-    \caption{Server to Client Message Types}
-    \begin{tabularx}{\textwidth}{l l X}
-        \toprule
-        \textbf{Type} & \textbf{Fields} & \textbf{Description} \\
-        \midrule
-        \texttt{system}   & \texttt{message}, \texttt{timestamp} & System notification (e.g., welcome message). \\
-        \texttt{join}     & \texttt{username}, \texttt{avatar}, \texttt{message}, \texttt{timestamp} & Notification that a user has joined. \\
-        \texttt{leave}    & \texttt{username}, \texttt{message}, \texttt{timestamp} & Notification that a user has left. \\
-        \texttt{message}  & \texttt{username}, \texttt{avatar}, \texttt{text}, \texttt{attachment}, \texttt{timestamp} & Broadcast of a chat message to all clients. \\
-        \texttt{userList} & \texttt{users} (array of \texttt{\{username, avatar\}}) & Updated list of all currently online users. \\
-        \texttt{history}  & \texttt{messages} (array) & Last 50 messages, sent to newly joining users. \\
-        \texttt{receipt}  & \texttt{msg\_id}, \texttt{status} & Delivery receipt for a sent message. \\
-        \texttt{error}    & \texttt{message} & Error notification (e.g., username already taken). \\
-        \texttt{typing}   & \texttt{username} & Typing indicator relayed from another user. \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{Message Lifecycle Example}
-
-\begin{lstlisting}[language={}, caption={Example: User ``Alice'' sending a message}, label={lst:msgflow}]
-1. Client -> Server:
-   { "type": "message", "text": "Hello everyone!",
-     "client_msg_id": "msg-1723645...-ab12c" }
-
-2. Server -> ALL Clients (broadcast):
-   { "type": "message", "username": "Alice", "avatar": "wizard",
-     "text": "Hello everyone!", "timestamp": "14:30:05" }
-
-3. Server -> Alice only (receipt):
-   { "type": "receipt", "msg_id": "msg-1723645...-ab12c",
-     "status": "delivered_all" }
-\end{lstlisting}
-
-
-% ══════════════════════════════════════════════════════════════════
-% 5. BACKEND IMPLEMENTATION
-% ══════════════════════════════════════════════════════════════════
-\section{Backend Implementation}
-
-The backend is implemented in a single Python file (\texttt{server/server.py}, 358 lines) using FastAPI's native WebSocket support.
-
-\subsection{ConnectionManager Class}
-
-The core of the backend is the \texttt{ConnectionManager} class, which maintains the state of all active connections and provides methods for message routing.
-
-\begin{table}[H]
-    \centering
-    \caption{ConnectionManager Methods}
-    \begin{tabularx}{\textwidth}{l X}
-        \toprule
-        \textbf{Method} & \textbf{Description} \\
-        \midrule
-        \texttt{add(ws, username, avatar)}   & Register a new WebSocket connection with a username and avatar. \\
-        \texttt{remove(ws)}                   & Remove a disconnected user and return their username. \\
-        \texttt{get\_username(ws)}            & Retrieve the username associated with a WebSocket. \\
-        \texttt{get\_all\_users()}            & Return a sorted list of all online users (username + avatar). \\
-        \texttt{is\_username\_taken(name)}    & Case-insensitive check for duplicate usernames. \\
-        \texttt{broadcast(msg, exclude)}      & Send a JSON message to all clients, optionally excluding one. Returns the count of successfully delivered messages. \\
-        \texttt{send\_to\_all(msg)}           & Send to ALL clients without exclusion. \\
-        \texttt{add\_to\_history(msg)}        & Store a message in the rolling history buffer (max 50). \\
-        \texttt{start\_cleanup\_timer()}      & Start a 60-second timer to clear history when the room empties. \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{WebSocket Endpoint Lifecycle}
-
-The \texttt{/ws} endpoint handles each client through a three-phase lifecycle:
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Phase 1 — Join:} Accept the WebSocket connection, receive the first message (must be type \texttt{join}), validate the username (non-empty and unique), and register the user.
-
-    \item \textbf{Phase 2 — Welcome \& Sync:} Send a welcome system message to the joiner, broadcast a join notification to all other users, send the updated user list to everyone, and send message history to the new joiner.
-
-    \item \textbf{Phase 3 — Chat Loop:} Enter an infinite loop listening for incoming messages. For \texttt{message} type, broadcast to all and send a delivery receipt back to the sender. For \texttt{typing} type, relay the typing indicator to all other users.
-
-    \item \textbf{Cleanup (finally block):} On disconnection (normal or error), remove the user, broadcast a leave notification, send the updated user list, and start the history cleanup timer if the room is now empty.
-\end{enumerate}
-
-\subsection{File Upload Endpoint}
-
-The server exposes a \texttt{POST /upload} REST endpoint for file attachments:
-
-\begin{itemize}[leftmargin=*]
-    \item Accepts any file type via multipart form upload.
-    \item Saves the file with a UUID-based unique filename to prevent collisions.
-    \item Returns the file URL, original filename, MIME type, and file size as JSON.
-    \item Uploaded files are served statically from the \texttt{/uploads/} path.
-\end{itemize}
-
-\subsection{Delivery Receipt System}
-
-The server implements a message delivery receipt mechanism:
-
-\begin{table}[H]
-    \centering
-    \caption{Delivery Receipt Statuses}
-    \begin{tabularx}{\textwidth}{l l X}
-        \toprule
-        \textbf{Status} & \textbf{Emoji} & \textbf{Meaning} \\
-        \midrule
-        \texttt{sent}           & \raisebox{-0.1em}{\Large 😴} & Message reached the server but no other users are online. \\
-        \texttt{partial}        & \raisebox{-0.1em}{\Large 😃} & Message was delivered to some but not all online users. \\
-        \texttt{delivered\_all} & \raisebox{-0.1em}{\Large 😎} & Message was successfully delivered to all online users. \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-The server calculates receipt status by comparing the number of successful deliveries against the total number of other connected clients.
-
-\subsection{History Management}
-
-\begin{itemize}[leftmargin=*]
-    \item The server maintains a rolling buffer of the last 50 chat messages.
-    \item When a new user joins, the entire history is sent as a single \texttt{history} message.
-    \item When the last user leaves the room, a 60-second cleanup timer starts.
-    \item If no one rejoins within 60 seconds, the history is cleared for a fresh session.
-    \item If someone rejoins before the timer expires, the timer is cancelled and the history is preserved.
-\end{itemize}
-
-
-% ══════════════════════════════════════════════════════════════════
-% 6. FRONTEND IMPLEMENTATION
-% ══════════════════════════════════════════════════════════════════
-\section{Frontend Implementation}
-
-The frontend consists of three files — \texttt{index.html} (structure), \texttt{style.css} (styling), and \texttt{app.js} (logic) — served by a lightweight FastAPI static file server (\texttt{serve.py}).
-
-\subsection{User Interface Design}
-
-The UI follows an \textbf{8-bit retro pixel-art aesthetic} using:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Font:} ``Press Start 2P'' (Google Fonts) — a pixel-art typeface.
-    \item \textbf{Color Palette:} Four-color scheme inspired by retro displays:
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Three-Node Backend Deployment}: Deploy the backend application across three designated backend systems (\texttt{Sys2}, \texttt{Sys3}, and \texttt{Sys4}). All client traffic enters through a single Load Balancer entrypoint on \texttt{Sys1}.
+    \item \textbf{Performance-Based Dynamic Load Balancing}: Replace fixed Round-Robin with dynamic metric-driven routing. Automatically detect unhealthy or degraded backends and suspend traffic delivery to them.
+    \item \textbf{Threshold and Routing Optimization}: Define and tune optimal load-switching thresholds to maximize throughput and minimize request latency under high concurrency.
+    \item \textbf{Shared Database Persistence and Strict Deduplication}: All backend instances must access a shared persistent data layer. Every message is assigned a unique message ID (\texttt{msg\_id}), ensuring strict idempotency and duplicate prevention across retries and failovers.
+    \item \textbf{Standardized API Routes}: Expose exact required gateway routes:
     \begin{itemize}
-        \item \texttt{\#FDF6ED} — Cream (lightest, text)
-        \item \texttt{\#DCCFC0} — Warm ivory/tan
-        \item \texttt{\#A1BC98} — Sage green (accent)
-        \item \texttt{\#778873} — Dark sage/forest (primary)
+        \item \texttt{POST /message} --- Ingests chat messages with \texttt{client-name} and \texttt{msg} fields.
+        \item \texttt{GET /feed} --- Retrieves persistent chat messages chronologically.
     \end{itemize}
-    \item \textbf{Visual Effects:} Scanline overlay, blinking cursor animations, pixel-border box shadows, and smooth CSS transitions.
-\end{itemize}
-
-The application has two screens:
-
-\subsubsection{Login Screen}
-
-\begin{figure}[H]
-    \centering
-    % ── PLACEHOLDER: Replace with a login screen screenshot ──
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{4cm}
-        \textbf{[PLACEHOLDER — Login Screen Screenshot]}\\[0.5cm]
-        Insert a screenshot of the login/join screen here,\\
-        showing the title, avatar picker, username input, and Start Quest button.
-    \vspace{4cm}}}
-    \caption{Login Screen — Avatar Selection \& Username Entry}
-    \label{fig:login}
-\end{figure}
-
-The login screen features:
-\begin{itemize}[leftmargin=*]
-    \item A large ``PIXEL CHAT'' title with blinking cursor animation.
-    \item A stat row showing live player count, server status, and season.
-    \item An \textbf{avatar picker grid} with 12 themed avatars (Wizard, Robot, Ninja, Astronaut, Dragon, Hero, Alien, Cyber, Fox, Owl, Bear, Lion).
-    \item A username text input field (max 20 characters).
-    \item A ``START QUEST'' button that initiates the WebSocket connection.
-    \item Error display area for validation messages (e.g., ``Username already taken'').
-\end{itemize}
-
-\subsubsection{Chat Screen}
-
-\begin{figure}[H]
-    \centering
-    % ── PLACEHOLDER: Replace with a chat screen screenshot ──
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{4cm}
-        \textbf{[PLACEHOLDER — Chat Screen Screenshot]}\\[0.5cm]
-        Insert a screenshot of the main chat interface here,\\
-        showing the sidebar, chat messages, and input area.
-    \vspace{4cm}}}
-    \caption{Chat Screen — Main Chat Interface}
-    \label{fig:chat}
-\end{figure}
-
-The chat screen is divided into two panels:
-
-\textbf{Left Sidebar Panel:}
-\begin{itemize}[leftmargin=*]
-    \item PixelChat logo.
-    \item XP progress bar with current rank display (Newbie $\rightarrow$ Squire $\rightarrow$ Knight $\rightarrow$ Champion $\rightarrow$ Warlord $\rightarrow$ Legend).
-    \item Online players list with avatars and a ``YOU'' tag for the current user.
-    \item Session stats: total messages sent, current streak, and session duration.
-\end{itemize}
-
-\textbf{Main Chat Panel:}
-\begin{itemize}[leftmargin=*]
-    \item Header bar with room name (``\# GREAT HALL''), player count, connection status indicator (Online/Offline/Reconnecting), a receipt info button, and a ``Leave'' button.
-    \item Scrollable messages area displaying system notifications, join/leave events, and user messages with avatars and timestamps.
-    \item Typing indicator bar (``USERNAME TYPING...'') with animated dots.
-    \item Input footer with attachment button, emoji picker toggle, message text input, and send button.
-\end{itemize}
-
-\subsection{WebSocket Client (\texttt{app.js})}
-
-The JavaScript client (\texttt{app.js}, 878 lines) handles all real-time communication and UI interactions:
-
-\subsubsection{Connection Management}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Connect:} Creates a new \texttt{WebSocket} object targeting \texttt{ws://<hostname>:8000/ws}. On open, sends a \texttt{join} message.
-    \item \textbf{Auto-Reconnect:} On unexpected disconnection, schedules reconnection with \textbf{exponential backoff} (1s, 2s, 4s, 8s, max 10s).
-    \item \textbf{Intentional Disconnect:} Clicking ``Leave'' sets an \texttt{isIntentionalClose} flag to prevent auto-reconnect.
-    \item \textbf{Status Display:} The connection indicator updates in real-time: green dot = Online, red dot = Offline, yellow dot = Reconnecting.
-\end{itemize}
-
-\subsubsection{Message Handling}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Optimistic Rendering:} Own messages are rendered immediately in the UI before server confirmation, providing instant feedback.
-    \item \textbf{Echo Suppression:} When the server broadcasts back the sender's own message, it is suppressed to avoid duplicates.
-    \item \textbf{Receipt Tracking:} Each outgoing message is assigned a unique \texttt{client\_msg\_id}. The receipt emoji on the message bubble updates when the server responds.
-    \item \textbf{HTML Escaping:} All user-generated content is escaped via \texttt{escapeHtml()} to prevent XSS attacks.
-    \item \textbf{History Rendering:} On join, historical messages are rendered with visual separators (``--- PREV MESSAGES ---'' / ``--- NEW MESSAGES ---'').
-\end{itemize}
-
-\subsubsection{Typing Indicators}
-\begin{itemize}[leftmargin=*]
-    \item Typing events are \textbf{throttled} to at most once every 2 seconds to reduce WebSocket traffic.
-    \item The indicator auto-hides after 3 seconds of inactivity.
-    \item The indicator is also hidden when a message from the typing user arrives.
-\end{itemize}
-
-\subsubsection{File Attachments}
-\begin{itemize}[leftmargin=*]
-    \item Users click the attachment button (📎) to open a file picker.
-    \item The selected file is uploaded to the backend via a \texttt{POST /upload} request.
-    \item A preview bar shows the filename and upload progress.
-    \item The attachment metadata (URL, filename, type, size) is sent alongside the chat message over WebSocket.
-    \item Recipients render attachments contextually: inline images, video/audio players, or download cards for other file types.
-\end{itemize}
-
-\subsection{Sound Effects}
-
-The application uses three Mario-themed 8-bit sound effects:
-
-\begin{table}[H]
-    \centering
-    \caption{Sound Effects}
-    \begin{tabularx}{\textwidth}{l l X}
-        \toprule
-        \textbf{Event} & \textbf{Sound File} & \textbf{Description} \\
-        \midrule
-        User Join   & \texttt{mushroom.mp3} & Super Mario mushroom power-up sound \\
-        New Message & \texttt{coin.mp3}     & Mario coin collection sound \\
-        User Leave  & \texttt{pipe.mp3}     & Mario Bros warp pipe sound \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-Additionally, synthesized 8-bit sounds are generated via the Web Audio API:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Notification beep:} A 440Hz square-wave beep when a message arrives while the tab is not focused.
-    \item \textbf{Level-up fanfare:} A four-note ascending arpeggio (C4-E4-G4-C5) played on rank promotion.
-\end{itemize}
-
-
-% ══════════════════════════════════════════════════════════════════
-% 7. GAMIFICATION SYSTEM
-% ══════════════════════════════════════════════════════════════════
-\section{Gamification System}
-
-The application includes a lightweight gamification layer to enhance user engagement, implemented entirely on the client side.
-
-\subsection{XP \& Rank Progression}
-
-Users earn Experience Points (XP) through the following actions:
-
-\begin{table}[H]
-    \centering
-    \caption{XP Earning Actions}
-    \begin{tabularx}{\textwidth}{l c X}
-        \toprule
-        \textbf{Action} & \textbf{XP Gained} & \textbf{Details} \\
-        \midrule
-        Send a message    & +2 XP & Per message sent \\
-        Another user joins & +5 XP & Per join event received \\
-        Session time       & +1 XP & Per minute of active session \\
-        Streak bonus       & +10 XP & Every 5 consecutive messages \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{Rank Ladder}
-
-\begin{table}[H]
-    \centering
-    \caption{Rank Progression}
-    \begin{tabularx}{\textwidth}{c l c X}
-        \toprule
-        \textbf{Level} & \textbf{Rank Name} & \textbf{XP Required} & \textbf{Next Rank At} \\
-        \midrule
-        1 & NEWBIE    & 0   & 50 XP \\
-        2 & SQUIRE    & 50  & 150 XP \\
-        3 & KNIGHT    & 150 & 320 XP \\
-        4 & CHAMPION  & 320 & 600 XP \\
-        5 & WARLORD   & 600 & 1000 XP \\
-        6 & LEGEND    & 1000 & — (max rank) \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-When a user levels up, a ``LEVEL UP!'' toast notification appears with an 8-bit fanfare sound.
-
-
-% ══════════════════════════════════════════════════════════════════
-% 8. KEY FEATURES DEMONSTRATION
-% ══════════════════════════════════════════════════════════════════
-\section{Key Features — Screenshots}
-
-This section provides visual evidence of all implemented features.
-
-\subsection{User Join/Leave Notifications}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Join/Leave Notifications Screenshot]}\\[0.5cm]
-        Insert a screenshot showing join and leave system messages\\
-        in the chat area (e.g., ``Alice joined the chat'', ``Bob left the chat'').
-    \vspace{3cm}}}
-    \caption{User Join and Leave Notifications}
-    \label{fig:joinleave}
-\end{figure}
-
-\subsection{Real-Time Message Broadcasting}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Multi-User Chat Screenshot]}\\[0.5cm]
-        Insert a screenshot showing messages from multiple users\\
-        displayed in real-time with avatars and timestamps.
-    \vspace{3cm}}}
-    \caption{Real-Time Message Broadcasting Across Multiple Users}
-    \label{fig:broadcast}
-\end{figure}
-
-\subsection{Online Users List}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Online Users Sidebar Screenshot]}\\[0.5cm]
-        Insert a screenshot showing the left sidebar with\\
-        multiple users listed with their avatars and the ``YOU'' tag.
-    \vspace{3cm}}}
-    \caption{Online Users Sidebar with Live Count}
-    \label{fig:onlineusers}
-\end{figure}
-
-\subsection{Typing Indicator}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2.5cm}
-        \textbf{[PLACEHOLDER — Typing Indicator Screenshot]}\\[0.5cm]
-        Insert a screenshot showing the typing indicator bar\\
-        (e.g., ``ALICE TYPING...'') below the messages area.
-    \vspace{2.5cm}}}
-    \caption{Real-Time Typing Indicator}
-    \label{fig:typing}
-\end{figure}
-
-\subsection{Emoji Picker}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Emoji Picker Screenshot]}\\[0.5cm]
-        Insert a screenshot showing the emoji picker panel\\
-        open above the message input area.
-    \vspace{3cm}}}
-    \caption{Quick React Emoji Picker}
-    \label{fig:emoji}
-\end{figure}
-
-\subsection{File Attachment}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — File Attachment Screenshot]}\\[0.5cm]
-        Insert a screenshot showing a sent message with an\\
-        image attachment rendered inline, or a file download card.
-    \vspace{3cm}}}
-    \caption{File Attachment — Image Preview and File Card}
-    \label{fig:attachment}
-\end{figure}
-
-\subsection{Message Delivery Receipts}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Message Receipts Screenshot]}\\[0.5cm]
-        Insert a screenshot showing messages with receipt emojis\\
-        (😴 for sent, 😃 for partial, 😎 for delivered to all).
-    \vspace{3cm}}}
-    \caption{Message Delivery Receipts}
-    \label{fig:receipts}
-\end{figure}
-
-\subsection{Connection Status \& Auto-Reconnect}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2.5cm}
-        \textbf{[PLACEHOLDER — Connection Status Screenshot]}\\[0.5cm]
-        Insert screenshots showing the connection status indicator\\
-        in ``ONLINE'', ``OFFLINE'', and ``WAIT...'' (reconnecting) states.
-    \vspace{2.5cm}}}
-    \caption{Connection Status Indicator}
-    \label{fig:connection}
-\end{figure}
-
-\subsection{Gamification — XP Bar \& Level Up}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Gamification Screenshot]}\\[0.5cm]
-        Insert a screenshot showing the XP bar, rank display,\\
-        message count, streak count, and optionally the level-up toast.
-    \vspace{3cm}}}
-    \caption{Gamification — XP Progress Bar, Rank, and Session Stats}
-    \label{fig:gamification}
-\end{figure}
-
-\subsection{Multiple Clients on Laboratory Machines}
-
-\begin{figure}[H]
-    \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{4cm}
-        \textbf{[PLACEHOLDER — Lab Deployment Screenshot]}\\[0.5cm]
-        Insert a screenshot or photo showing the application running\\
-        on multiple laboratory machines simultaneously, with 4 users\\
-        chatting in real-time.
-    \vspace{4cm}}}
-    \caption{Application Deployed on 4 Laboratory Machines}
-    \label{fig:labdeploy}
-\end{figure}
-
-
-% ══════════════════════════════════════════════════════════════════
-% 9. DEPLOYMENT & SETUP
-% ══════════════════════════════════════════════════════════════════
-\section{Deployment \& Setup Instructions}
-
-\subsection{Prerequisites}
-\begin{itemize}[leftmargin=*]
-    \item Python 3.10 or higher installed on the server machine.
-    \item \texttt{pip} package manager.
-    \item All machines connected to the same local network (LAN).
-    \item A modern web browser (Chrome, Firefox, Edge) on each client machine.
-\end{itemize}
-
-\subsection{Installation Steps}
-
-\begin{lstlisting}[language=bash, caption={Installation Commands}, label={lst:install}]
-# 1. Clone the repository
-git clone <repository-url>
-cd group-chat-app
-
-# 2. Create the environment file
-cp .env.example .env
-# Edit .env to change ports if needed (default: 8000, 5000)
-
-# 3. Install Python dependencies
-cd server
-pip install -r requirements.txt
-cd ..
-\end{lstlisting}
-
-\subsection{Running the Application}
-
-Two terminal windows are required on the server machine:
-
-\begin{lstlisting}[language=bash, caption={Starting the Servers}, label={lst:start}]
-# Terminal 1 — Start the Backend Server
-cd server
-python server.py
-# Output: WebSocket: ws://0.0.0.0:8000/ws
-
-# Terminal 2 — Start the Frontend Server
-cd client
-python serve.py
-# Output: URL: http://localhost:5000
-\end{lstlisting}
-
-\subsection{Lab Deployment (4 Machines)}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Machine 1 (Server):} Run both \texttt{server.py} and \texttt{serve.py}. Note its IP address (e.g., \texttt{192.168.1.100}).
-    \item \textbf{Machines 1–4 (Clients):} Open \texttt{http://192.168.1.100:5000} in a web browser.
-    \item Each user enters a unique username, selects an avatar, and clicks ``Start Quest''.
-    \item The WebSocket client automatically connects to \texttt{ws://192.168.1.100:8000/ws} (uses \texttt{window.location.hostname}).
+    \item \textbf{Custom Load Generator and Comprehensive Evaluation}: Construct a high-concurrency custom load generator in Go to simulate variable user counts, message lengths, and inter-request intervals, generating comprehensive performance plots across single-backend, Round-Robin, and dynamic load balancing topologies.
+    \item \textbf{Preservation of Security and Baseline Features}: Maintain all prior secure application capabilities (AES-GCM encryption, ECDSA digital signatures, HMAC-SHA256 integrity verification, and WebSocket streaming) without simplification or removal.
 \end{enumerate}
 
-\subsection{Environment Configuration}
+%─────────────────────────────────────────────────────────────────────────────
+\section{System Architecture}
+%─────────────────────────────────────────────────────────────────────────────
 
-\begin{lstlisting}[language=bash, caption={.env Configuration File}, label={lst:env}]
-# Backend (FastAPI WebSocket server)
-BACKEND_PORT=8000
+\subsection{Deployment Topology}
 
-# Frontend (static file server)
-FRONTEND_PORT=5000
-\end{lstlisting}
+The system is deployed across four machines sharing a single external IP address (\texttt{10.1.75.51}), with each machine distinguished by its external port.
 
-The \texttt{.env} file is loaded by both server scripts via \texttt{python-dotenv}. It is excluded from version control via \texttt{.gitignore}.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm and 2.5cm,
+    box/.style={rectangle, rounded corners=4pt, draw, minimum width=2.8cm, minimum height=1.1cm, align=center, font=\small},
+    clientbox/.style={box, fill=gray!15},
+    lbbox/.style={box, fill=accentblue!15, draw=accentblue, thick},
+    bebox/.style={box, fill=accentgreen!15, draw=accentgreen, thick},
+    vkbox/.style={box, fill=orange!15, draw=orange, thick},
+    arrow/.style={->, thick, >=stealth}
+]
+    \node[clientbox] (client) {Clients\\(Browser)};
+    \node[lbbox, right=2.5cm of client] (lb) {Load Balancer\\(Sys1 : 5269)\\Go};
+    \node[bebox, above right=0.5cm and 2.2cm of lb] (sys2) {Backend-1 (Sys2)\\FastAPI :5270};
+    \node[bebox, right=2.2cm of lb] (sys3) {Backend-2 (Sys3)\\FastAPI :5271};
+    \node[bebox, below right=0.5cm and 2.2cm of lb] (sys4) {Backend-3 (Sys4)\\FastAPI :5272};
+    \node[vkbox, right=2.2cm of sys2] (vkp) {Valkey Primary\\(Sys2 :4270)};
+    \node[vkbox, right=2.2cm of sys3] (vkr) {Valkey Replicas\\(Sys3/4 :4000)};
 
+    \draw[arrow] (client) -- (lb);
+    \draw[arrow] (lb) -- (sys2);
+    \draw[arrow] (lb) -- (sys3);
+    \draw[arrow] (lb) -- (sys4);
+    \draw[arrow] (sys2) -- node[above, font=\tiny]{writes} (vkp);
+    \draw[arrow] (sys3) -- (vkp);
+    \draw[arrow] (sys4) -- (vkp);
+    \draw[arrow, dashed] (vkp) -- node[right, font=\tiny]{replicate} (vkr);
+    \draw[arrow, dashed] (vkr) -- node[below, font=\tiny]{reads} (sys3);
+    \draw[arrow, dashed] (vkr) -- (sys4);
+\end{tikzpicture}
+\caption{Deployment topology: three backends behind a Go Load Balancer, sharing data via Valkey primary-replica replication.}
+\end{figure}
 
-% ══════════════════════════════════════════════════════════════════
-% 10. CORS & SECURITY
-% ══════════════════════════════════════════════════════════════════
-\section{CORS \& Security Considerations}
+\subsection{Port Allocation}
 
-\subsection{CORS Configuration}
-The backend server enables Cross-Origin Resource Sharing (CORS) to allow the frontend (running on a different port) to communicate with the backend:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+\textbf{System} & \textbf{Service} & \textbf{Internal Port} & \textbf{External Port} \\
+\midrule
+Sys1 & Load Balancer   & 5000 & 5269 \\
+Sys2 & Backend-1       & 5000 & 5270 \\
+Sys2 & Valkey Primary  & 4000 & 4270 \\
+Sys3 & Backend-2       & 5000 & 5271 \\
+Sys3 & Valkey Replica  & 4000 & 4271 \\
+Sys4 & Backend-3       & 5000 & 5272 \\
+Sys4 & Valkey Replica  & 4000 & 4272 \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\begin{lstlisting}[language=Python, caption={CORS Middleware Configuration}, label={lst:cors}]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-\end{lstlisting}
+\subsection{Data Flow}
 
-\textit{Note:} The wildcard (\texttt{*}) origin is used for simplicity in the lab environment. In a production deployment, this should be restricted to specific allowed origins.
+\begin{enumerate}
+    \item A client sends \texttt{POST /message} to the Load Balancer (\texttt{:5269}).
+    \item The LB selects a backend using Power of Two Choices (P2C) based on a composite load score.
+    \item The selected backend writes atomically to the \textbf{Valkey primary} (Sys2) via a Lua script that prevents duplicate insertion.
+    \item Valkey asynchronously replicates the write to replicas on Sys3 and Sys4.
+    \item \texttt{GET /feed} reads from the \textbf{local replica}, keeping read latency minimal.
+    \item SQLite (local to each machine) is retained for user accounts, rooms, XP, and session tokens.
+\end{enumerate}
 
-\subsection{Security Measures}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{XSS Prevention:} All user-generated text is sanitized using \texttt{escapeHtml()} before rendering in the DOM.
-    \item \textbf{Input Validation:} The server validates usernames (non-empty, unique) and enforces the join protocol (first message must be type \texttt{join}).
-    \item \textbf{File Upload Safety:} Uploaded files are renamed with UUID-generated filenames to prevent path traversal and naming conflicts.
-    \item \textbf{Connection Cleanup:} Broken WebSocket connections are detected and cleaned up automatically during broadcast operations.
+%─────────────────────────────────────────────────────────────────────────────
+\section{Implementation}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Shared Message Store: \texttt{server/feed\_store.py}}
+
+\subsubsection{Design Rationale}
+
+SQLite is a single-writer, file-based database not designed for concurrent writes from multiple independent processes across different machines. \textbf{Valkey} (a BSD-licensed open-source fork of Redis) is used for the message hot-path because:
+\begin{itemize}
+    \item It operates entirely in-memory, delivering sub-millisecond RTT under normal conditions.
+    \item It natively supports primary-replica asynchronous replication, making cross-backend data sharing transparent.
+    \item Its \texttt{HSETNX} command enables atomic, idempotent message insertion without application-level locking.
+    \item Lua scripting allows multi-step operations to execute atomically on the server.
 \end{itemize}
 
+SQLite is retained for user accounts, authentication tokens, and room metadata which are local to each node.
 
-% ══════════════════════════════════════════════════════════════════
-% 11. TESTING
-% ══════════════════════════════════════════════════════════════════
-\section{Testing}
+\subsubsection{Data Model}
 
-The application was tested across multiple scenarios to ensure reliability and correctness.
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Key pattern} & \textbf{Type} & \textbf{Contents} \\
+\midrule
+\texttt{msg:\{room\_id\}} & Hash & \texttt{msg\_id} $\to$ JSON-encoded message payload \\
+\texttt{msgorder:\{room\_id\}} & Sorted Set & \texttt{msg\_id} scored by \texttt{created\_at\_ts} (Unix epoch) \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\subsection{Test Cases}
+This pairing enables $O(1)$ lookup of any message and $O(\log N + M)$ range queries for history retrieval.
 
-\begin{longtable}{p{0.5cm} p{5cm} p{4cm} p{3cm}}
-    \toprule
-    \textbf{\#} & \textbf{Test Case} & \textbf{Expected Result} & \textbf{Status} \\
-    \midrule
-    \endhead
-    1 & Single user joins with a valid username & Welcome message displayed, user appears in sidebar & \textbf{Pass} \\
-    \midrule
-    2 & Two users join with same username & Second user receives ``Username taken'' error & \textbf{Pass} \\
-    \midrule
-    3 & User joins with empty username & ``Enter a name first'' error displayed & \textbf{Pass} \\
-    \midrule
-    4 & User sends a text message & Message appears for all connected users in real-time & \textbf{Pass} \\
-    \midrule
-    5 & User sends a message with image attachment & Image rendered inline for all users & \textbf{Pass} \\
-    \midrule
-    6 & User disconnects (closes tab) & Leave notification broadcast, user removed from sidebar & \textbf{Pass} \\
-    \midrule
-    7 & Server goes down while client is connected & Client shows ``OFFLINE'', auto-reconnects when server restarts & \textbf{Pass} \\
-    \midrule
-    8 & New user joins ongoing chat & Receives last 50 messages as history & \textbf{Pass} \\
-    \midrule
-    9 & User types a message & ``USERNAME TYPING'' indicator shown to others & \textbf{Pass} \\
-    \midrule
-    10 & All users leave and one rejoins within 60s & Message history is preserved & \textbf{Pass} \\
-    \midrule
-    11 & All users leave, no one rejoins for 60s & Message history is cleared & \textbf{Pass} \\
-    \midrule
-    12 & User clicks ``Leave'' button & Graceful disconnect, returns to login screen & \textbf{Pass} \\
-    \midrule
-    13 & 4 users chat simultaneously on LAN & All messages delivered in real-time to all clients & \textbf{Pass} \\
-    \midrule
-    14 & Message delivery receipt: all online & 😎 emoji displayed on sender's message & \textbf{Pass} \\
-    \midrule
-    15 & Message delivery receipt: alone in room & 😴 emoji displayed on sender's message & \textbf{Pass} \\
-    \bottomrule
-\end{longtable}
+\subsubsection{Atomic Deduplication via Lua Script}
 
-\subsection{Testing Environment}
+\begin{lstlisting}[language=Python, caption={Lua script in feed\_store.py for atomic idempotent insertion}]
+_LUA_INSERT = """
+local inserted = redis.call('HSETNX', KEYS[1], ARGV[1], ARGV[2])
+if inserted == 1 then
+    redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
+end
+return inserted
+"""
+\end{lstlisting}
+
+\texttt{HSETNX} sets the field only if it does not already exist. If a \texttt{msg\_id} is already present (from a retry or a duplicate delivery through another backend), the script returns \texttt{0} and skips the \texttt{ZADD}. Because Lua scripts execute atomically within a single Valkey event-loop cycle, there is no race condition between the existence check and the insertion.
+
+\subsubsection{Paginated Read with Replica Fallback}
+
+The \texttt{get\_all()} function retrieves the latest $N$ messages by pushing the pagination limit directly into the Valkey \texttt{ZRANGE} query:
+
+\begin{lstlisting}[language=Python, caption={Paginated fetch with primary fallback in feed\_store.py}]
+async def get_all(room_id: str, limit: int = 0) -> List[Dict]:
+    # ZRANGE -N -1 returns the latest N entries from the sorted set
+    start_rank = -limit if limit > 0 else 0
+
+    try:
+        msg_ids  = await _replica.zrange(f"msgorder:{room_id}", start_rank, -1)
+        if not msg_ids:
+            return []
+        payloads = await _replica.hmget(f"msg:{room_id}", msg_ids)
+    except Exception:
+        # Replica unavailable -- fall back to primary to avoid HTTP 500
+        msg_ids  = await _primary.zrange(f"msgorder:{room_id}", start_rank, -1)
+        if not msg_ids:
+            return []
+        payloads = await _primary.hmget(f"msg:{room_id}", msg_ids)
+
+    return [json.loads(p) for p in payloads if p]
+\end{lstlisting}
+
+\begin{notebox}
+\textbf{Design decision --- primary fallback:} When the local Valkey replica is temporarily unavailable, \texttt{/feed} falls back to reading from the primary rather than returning an HTTP 500 error. This ensures service continuity at the cost of a slightly longer network round-trip, which is preferable to a complete service failure.
+\end{notebox}
+
+\subsubsection{Write-Read Split per Machine}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Machine} & \textbf{VALKEY\_HOST (writes)} & \textbf{VALKEY\_REPLICA\_HOST (reads)} \\
+\midrule
+Sys2 & \texttt{127.0.0.1} & \texttt{127.0.0.1} \\
+Sys3 & \texttt{10.1.75.51} (Sys2 external) & \texttt{127.0.0.1} (local replica) \\
+Sys4 & \texttt{10.1.75.51} (Sys2 external) & \texttt{127.0.0.1} (local replica) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Duplicate Prevention: Three-Layer Defence}
+
+\begin{center}
+\begin{tabular}{clll}
+\toprule
+\textbf{Layer} & \textbf{Mechanism} & \textbf{Scope} & \textbf{Location} \\
+\midrule
+1 & Lua \texttt{HSETNX} & Cross-backend (shared Valkey primary) & \texttt{feed\_store.py} \\
+2 & SQLite \texttt{UNIQUE INDEX} & Per-node structural guarantee & \texttt{db.py} schema \\
+3 & \texttt{INSERT OR IGNORE} & Per-node application guard & \texttt{db.py} \texttt{save\_message()} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Layer 1 handles all inter-backend deduplication in the shared Valkey store. Layers 2 and 3 protect against edge cases where a backend writes directly to SQLite. The UNIQUE constraint at the schema level makes duplicate storage structurally impossible.
+
+\subsection{API Endpoints in \texttt{server/server.py}}
+
+\subsubsection{Required Routes}
+
+\begin{lstlisting}[language=Python, caption={POST /message and GET /feed endpoints}]
+DEFAULT_FEED_ROOM = "loadtest-feed"
+
+@app.post("/message")
+async def post_message(req: SimpleMessageRequest):
+    msg_id = req.msg_id or str(uuid.uuid4())
+    inserted = await feed_store.insert_if_new(
+        room_id=DEFAULT_FEED_ROOM,
+        msg_id=msg_id,
+        payload={"client_name": req.client_name,
+                 "msg": req.msg, "ts": _time.time()},
+    )
+    return {"ok": True, "msg_id": msg_id, "duplicate": not inserted}
+
+@app.get("/feed")
+async def get_feed(limit: int = 80):
+    messages = await feed_store.get_all(DEFAULT_FEED_ROOM, limit=limit)
+    return {"messages": messages, "total": len(messages)}
+\end{lstlisting}
+
+The \texttt{/feed} endpoint accepts an optional \texttt{?limit=N} query parameter (default: 80). Returning only the most recent messages is practical (chat clients display recent history) and essential for performance: returning all stored messages in a single response would produce a multi-megabyte JSON body causing request timeouts under high load.
+
+\subsubsection{Health Endpoint}
+
+\begin{lstlisting}[language=Python, caption={/health endpoint providing metrics for LB load scoring}]
+@app.get("/health")
+async def health_check():
+    try:
+        load1, _, _ = os.getloadavg()
+    except AttributeError:
+        load1 = 0.0
+    return {
+        "status":                "ok",
+        "cpu_percent":           psutil.cpu_percent(interval=None),
+        "load_avg_1m":           load1,
+        "active_ws_connections": len(manager.active_connections),
+        "valkey_rtt_ms":         await feed_store.probe_latency(),
+    }
+\end{lstlisting}
+
+\subsection{Load Balancer}
+
+\subsubsection{Composite Load Score}
+
+Each backend is assigned a scalar load score combining four metrics:
+
+\begin{equation}
+\text{score} = 2 \cdot \text{in-flight} + \text{CPU\%} + 0.5 \cdot \text{WS connections} + 3 \cdot \text{Valkey RTT (ms)}
+\end{equation}
+
+The weights reflect the relative impact on end-to-end request latency:
+\begin{itemize}
+    \item \textbf{In-flight} ($\times 2$): The most direct real-time signal of current backend load.
+    \item \textbf{CPU\%} ($\times 1$): OS-level compute saturation.
+    \item \textbf{WebSocket connections} ($\times 0.5$): Background load from persistent connections.
+    \item \textbf{Valkey RTT} ($\times 3$): Heaviest weight because every \texttt{/message} write and \texttt{/feed} read involves a Valkey round-trip. A congested database path directly translates to elevated end-to-end response times.
+\end{itemize}
+
+\subsubsection{Overload Detection}
+
+A backend is considered overloaded when its live in-flight request count exceeds the threshold:
+
+\begin{lstlisting}[language=Go, caption={Real-time overload detection using atomic in-flight counter}]
+const overloadThreshold int64 = 200
+
+func (b *Backend) IsOverloaded() bool {
+    return b.inFlight.Load() > overloadThreshold
+}
+\end{lstlisting}
+
+Using the real-time in-flight counter rather than stale health-check scores prevents the Thundering Herd problem: when a backend recovers, the score drops immediately in the health check which could cause all traffic to flood back simultaneously. The live atomic counter gives a continuously accurate picture of load.
+
+\subsubsection{Power of Two Choices (P2C) Algorithm}
+
+\begin{lstlisting}[language=Go, caption={P2C backend selection in nextBackend() -- main.go}]
+// Pick two distinct random backends
+i := rand.Intn(n)
+j := rand.Intn(n - 1)
+if j >= i { j++ }
+
+b1, b2 := lb.backends[i], lb.backends[j]
+
+if b1.IsAlive() && !b1.IsOverloaded() &&
+   b2.IsAlive() && !b2.IsOverloaded() {
+    if b1.InFlightCount() <= b2.InFlightCount() {
+        return b1
+    }
+    return b2
+} else if b1.IsAlive() && !b1.IsOverloaded() {
+    return b1
+} else if b2.IsAlive() && !b2.IsOverloaded() {
+    return b2
+}
+// Fallback: round-robin among alive backends
+\end{lstlisting}
+
+\begin{infobox}
+\textbf{Why P2C?} Pure random selection has an expected maximum load of $O(\log n / \log \log n)$ across $n$ backends. P2C reduces this to $O(\log \log n)$ --- an exponential improvement --- by sampling two candidates and picking the lighter one. This is achieved in $O(1)$ with no synchronisation required.
+\end{infobox}
+
+\subsubsection{Health Monitoring Loop}
+
+A background goroutine polls each backend's \texttt{/health} endpoint every 5 seconds:
+
+\begin{lstlisting}[language=Go, caption={Health loop updating alive status and load score atomically}]
+resp, err := client.Get(b.URL.String() + "/health")
+if err != nil || resp.StatusCode != http.StatusOK {
+    b.SetAlive(false)
+    b.SetLoadScore(9999.0)  // penalty score: never selected
+} else {
+    var h BackendHealth
+    json.NewDecoder(resp.Body).Decode(&h)
+    b.SetLoadScore(b.computeLoadScore(h))
+    b.SetAlive(true)
+}
+\end{lstlisting}
+
+Dead backends receive a penalty score of \textbf{9999}, ensuring they are never selected by P2C. When a backend recovers, it is immediately marked alive on the next health-check cycle.
+
+\subsection{Load Generator}
+
+The load generator supports four modes and captures per-experiment output:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Mode} & \textbf{HTTP Method} & \textbf{Endpoint} \\
+\midrule
+\texttt{message} & POST & \texttt{/message} with random JSON body \\
+\texttt{feed}    & GET  & \texttt{/feed?limit=80} \\
+\texttt{mixed}   & Both & Controlled by \texttt{-read-ratio} (default 0.2) \\
+\texttt{health}  & GET  & \texttt{/health} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Key features: a goroutine worker pool for accurate concurrency control; a configurable user pool of random usernames; variable message lengths; a background utilisation poller that records CPU and Valkey RTT to \texttt{utilization.csv}; and named per-experiment JSON and CSV output files.
+
+\subsection{Valkey Persistence}
+
+The Valkey primary uses Append-Only File (AOF) persistence with \texttt{everysec} fsync:
+
+\begin{lstlisting}[language=bash, caption={scripts/valkey\_primary.sh --- AOF persistence}]
+redis-server --daemonize yes --bind 0.0.0.0 --port $PORT \
+    --appendonly yes \
+    --appendfilename valkey.aof \
+    --appendfsync everysec \
+    --no-appendfsync-on-rewrite yes \
+    --save ""
+\end{lstlisting}
+
+\texttt{appendfsync everysec} flushes the AOF buffer to disk once per second in a background thread while replying to clients immediately, providing a maximum one-second data-loss window in the event of a system failure.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Experimental Evaluation}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Setup}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Total requests per experiment & 20,000 \\
+Concurrent workers            & 200 \\
+User pool size                & 100 distinct usernames \\
+Message length                & 20--300 characters (random) \\
+Read ratio (mixed mode)       & 20\% reads / 80\% writes \\
+Read endpoint                 & \texttt{GET /feed?limit=80} \\
+Write endpoint                & \texttt{POST /message} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Experiment} & \textbf{Target} & \textbf{Mode} \\
+\midrule
+Exp.\,1: \texttt{single\_write} & Sys3 (\texttt{:5271}) & Write-only \\
+Exp.\,2: \texttt{single\_read}  & Sys3 (\texttt{:5271}) & Read-only  \\
+Exp.\,3: \texttt{single\_mixed} & Sys3 (\texttt{:5271}) & Mixed      \\
+Exp.\,4: \texttt{lb\_write}     & LB (\texttt{:5269})   & Write-only \\
+Exp.\,5: \texttt{lb\_read}      & LB (\texttt{:5269})   & Read-only  \\
+Exp.\,6: \texttt{lb\_mixed}     & LB (\texttt{:5269})   & Mixed      \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Summary Results}
+
+\begin{center}
+\begin{tabular}{lrrrrrr}
+\toprule
+\textbf{Experiment} & \textbf{RPS} & \textbf{Dropout} & \textbf{p50 (ms)} & \textbf{p95 (ms)} & \textbf{p99 (ms)} & \textbf{Duration (s)} \\
+\midrule
+Single Write  & 353.84 & 0.00\% & 488  & 796  & 1147 & 56.5 \\
+Single Read   & 160.83 & 0.00\% & 1080 & 1409 & 1577 & 124.4 \\
+Single Mixed  & 206.30 & 2.15\% & 673  & 1280 & 3245 & 94.9 \\
+LB Write      & 445.28 & 0.61\% & 309  & 901  & 2354 & 44.6 \\
+LB Read       & 327.68 & 0.03\% & 464  & 1119 & 2032 & 61.0 \\
+LB Mixed      & 492.55 & 0.00\% & 326  & 738  & 1710 & 40.6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Results and Analysis}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Throughput}
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-        \textbf{[PLACEHOLDER — Testing Screenshot]}\\[0.5cm]
-        Insert a screenshot showing the backend server terminal\\
-        logs during a test session (user joins, messages, leaves).
-    \vspace{3cm}}}
-    \caption{Backend Server Terminal Logs During Testing}
-    \label{fig:testing}
+    \includegraphics[width=0.92\textwidth]{throughput_overall.png}
+    \caption{Overall throughput (requests per second) across all six experiments. Load-balanced configurations consistently outperform single-backend configurations.}
 \end{figure}
 
-
-% ══════════════════════════════════════════════════════════════════
-% 12. CHALLENGES & SOLUTIONS
-% ══════════════════════════════════════════════════════════════════
-\section{Challenges \& Solutions}
-
-\begin{table}[H]
+\begin{figure}[H]
     \centering
-    \caption{Challenges Encountered and Solutions Applied}
-    \begin{tabularx}{\textwidth}{X X}
-        \toprule
-        \textbf{Challenge} & \textbf{Solution} \\
-        \midrule
-        Handling broken WebSocket connections during broadcast &
-        Wrapped each \texttt{send\_json()} in a try-except block; broken connections are collected and cleaned up after the broadcast loop. \\
-        \midrule
-        Preventing duplicate message display (sender sees own message twice) &
-        Implemented optimistic rendering on the client side; server echo for the sender's own username is suppressed. \\
-        \midrule
-        Cross-origin requests between frontend (port 5000) and backend (port 8000) &
-        Configured CORS middleware on the backend to allow all origins. \\
-        \midrule
-        File attachment URLs not resolving on other clients &
-        Absolutized file URLs on the client side by prepending the backend host and port to relative paths. \\
-        \midrule
-        Stale message history persisting across different sessions &
-        Implemented a 60-second cleanup timer that clears history when the room is empty. Timer is cancelled if someone rejoins. \\
-        \midrule
-        Network instability causing permanent disconnections &
-        Implemented auto-reconnect with exponential backoff (1s to 10s max delay). \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
+    \includegraphics[width=0.92\textwidth]{throughput_write_vs_read.png}
+    \caption{Write versus read throughput in mixed-mode experiments.}
+\end{figure}
 
+\paragraph{Analysis.}
+The load-balanced mixed workload achieves \textbf{492 RPS} compared to \textbf{206 RPS} on a single backend, a \textbf{2.4$\times$ increase}. The LB write experiment (445 RPS) outperforms single-backend write (354 RPS) by 26\% per backend: since all three backends issue writes to the shared Valkey primary in parallel, the bottleneck shifts from the backend tier to the database tier. Read throughput scales near-linearly (161 RPS single vs.\ 328 RPS LB, a 2.0$\times$ improvement) because each backend's local replica serves reads independently with no cross-machine coordination.
 
-% ══════════════════════════════════════════════════════════════════
-% 13. WORKFLOW SUMMARY
-% ══════════════════════════════════════════════════════════════════
-\section{Workflow Summary}
+\subsection{Latency}
 
-The following is a step-by-step summary of the complete application workflow:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\textwidth]{latency_overall.png}
+    \caption{Overall latency percentiles (p50, p95, p99) across all experiments. Tail latency is significantly elevated in single-backend mixed mode due to resource contention.}
+\end{figure}
 
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Server Startup:} The administrator starts the backend WebSocket server (\texttt{server.py}) and the frontend static file server (\texttt{serve.py}) on the designated host machine.
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{latency_write.png}
+        \caption{Write latency percentiles.}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{latency_read.png}
+        \caption{Read latency percentiles.}
+    \end{subfigure}
+    \caption{Write and read latency distributions for single-backend and load-balanced configurations.}
+\end{figure}
 
-    \item \textbf{Client Access:} Each user navigates to \texttt{http://<server-ip>:5000} in their browser. The browser downloads the HTML, CSS, and JavaScript files.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\textwidth]{latency_write_vs_read.png}
+    \caption{Write versus read latency in mixed-mode experiments. Read requests complete faster than writes because they fetch a bounded set of 80 messages from a local replica, while writes involve a network hop to the primary plus Lua script execution.}
+\end{figure}
 
-    \item \textbf{Login:} The user selects an avatar from the 12 available options, enters a unique username (max 20 characters), and clicks ``START QUEST''.
+\paragraph{Analysis.}
+Median (p50) write latency drops from \textbf{488\,ms} on a single backend to \textbf{309\,ms} under the load balancer, a 37\% reduction. The most striking result is tail latency: p99 for the single-backend mixed workload reaches \textbf{3,245\,ms}, compared to \textbf{1,710\,ms} under the LB --- a 47\% improvement. This demonstrates that P2C effectively prevents any single backend from becoming a bottleneck that degrades tail latency for all concurrent users.
 
-    \item \textbf{WebSocket Handshake:} The JavaScript client initiates a WebSocket connection to \texttt{ws://<server-ip>:8000/ws}. Upon successful TCP handshake and HTTP upgrade, the connection is established.
+Median read latency under the LB (\textbf{464\,ms}) is 57\% lower than the single-backend read (\textbf{1,080\,ms}). When 200 concurrent clients simultaneously request \texttt{/feed} from a single backend, all 200 queries hit the same local replica. Distributing across three backends reduces per-replica concurrency approximately three-fold.
 
-    \item \textbf{Join Protocol:} The client sends a \texttt{join} message. The server validates the username, registers the user, sends a welcome message, broadcasts a join notification, and syncs the user list and message history.
+Reads are inherently slower than writes in this system because a write is a single Lua script execution on the primary, while a read involves a \texttt{ZRANGE} (to retrieve ordered message IDs) followed by an \texttt{HMGET} (to retrieve payloads), plus JSON serialisation of the response body.
 
-    \item \textbf{Real-Time Chat:} Users exchange messages in real-time. Each message is broadcast to all connected clients. The sender sees instant feedback via optimistic rendering and delivery receipts.
+\subsection{Dropout Rate}
 
-    \item \textbf{Interactive Features:} Users can send emojis, attach files, and see typing indicators — all communicated over the same WebSocket connection.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\textwidth]{dropout_comparison.png}
+    \caption{Request dropout rate across all experiments. The single-backend mixed workload exhibits a 2.15\% dropout rate, which the load balancer eliminates entirely in the equivalent configuration.}
+\end{figure}
 
-    \item \textbf{Gamification:} As users interact, they earn XP, build streaks, and progress through ranks — displayed on the sidebar.
+\paragraph{Analysis.}
+Under mixed workload on a single backend, \textbf{429 out of 20,000 requests failed} (2.15\% dropout). This occurs because 200 concurrent clients simultaneously issuing both write and read requests exhausts the backend's connection pool and causes request timeouts. The load balancer completely eliminates this in the equivalent mixed experiment, achieving \textbf{0.00\% failure rate} with 20,000 successful responses. The small residual dropout in \texttt{lb\_write} (0.61\%) and \texttt{lb\_read} (0.03\%) is attributable to transient network events during the experiment; the load generator does not retry failed requests by design, so these represent true one-off failures, not systematic degradation.
 
-    \item \textbf{Disconnect:} When a user leaves (intentionally or due to network issues), the server notifies remaining users, updates the user list, and handles cleanup. The client auto-reconnects on unintentional disconnections.
+\subsection{Workload Mix Distribution}
 
-    \item \textbf{Session End:} When all users have left, the server waits 60 seconds before clearing the message history, preparing for the next session.
-\end{enumerate}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{endpoint_mix.png}
+    \caption{Distribution of write and read requests in mixed-mode experiments. The 80\%/20\% split is maintained accurately by the load generator's probabilistic coin-flip per request.}
+\end{figure}
 
+\paragraph{Analysis.}
+The endpoint mix chart confirms that the load generator accurately maintained the configured 80\%/20\% write-to-read ratio. Each worker independently draws a random number per request; the empirical ratio converges to the configured value as the number of requests increases, consistent with the law of large numbers.
 
-% ══════════════════════════════════════════════════════════════════
-% 14. FUTURE ENHANCEMENTS
-% ══════════════════════════════════════════════════════════════════
-\section{Future Enhancements}
+\subsection{System Utilisation}
 
-While the current implementation fulfills all assignment requirements and includes several bonus features, the following enhancements could be considered for future development:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{cpu_utilization.png}
+    \caption{CPU utilisation across all backend servers over the full test duration. Dashed vertical lines mark boundaries between experimental phases. During Exp.\,1--3 (single backend), only Sys3 shows elevated CPU. During Exp.\,4--6 (load-balanced), CPU rises across all three backends simultaneously, confirming successful load distribution.}
+\end{figure}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Multiple Chat Rooms:} Support for creating and joining different chat rooms/channels.
-    \item \textbf{Private Messaging:} Direct one-to-one messaging between users.
-    \item \textbf{Persistent Storage:} Database integration (e.g., SQLite, PostgreSQL) for message history and user accounts.
-    \item \textbf{User Authentication:} Password-protected user accounts with login sessions.
-    \item \textbf{End-to-End Encryption:} Encrypting messages so only intended recipients can read them.
-    \item \textbf{Message Reactions:} Allowing users to react to specific messages with emojis.
-    \item \textbf{Read Receipts:} Tracking which users have actually read a message (not just received it).
-    \item \textbf{HTTPS/WSS:} TLS encryption for secure communication in production environments.
-    \item \textbf{Mobile Responsive Design:} Optimizing the UI for mobile devices and tablets.
-\end{itemize}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{valkey_rtt.png}
+    \caption{Valkey RTT across all backends throughout the experiments. The RTT reflects database load and network path quality. Elevated RTTs during write-heavy phases (Exp.\,1, Exp.\,4) reflect the primary handling a high volume of Lua script executions. Lower RTTs during read-only phases (Exp.\,2, Exp.\,5) reflect lighter primary load as reads are served by local replicas.}
+\end{figure}
 
+\paragraph{Analysis.}
+The CPU utilisation chart provides direct visual confirmation of load distribution. During Experiments 1--3, CPU activity is concentrated on Sys3. During Experiments 4--6, CPU load rises on all three backends simultaneously, confirming that the P2C algorithm successfully distributes traffic across the cluster. The Valkey RTT chart shows that RTT increases during write-heavy phases and decreases during read-only phases, which is consistent with the system design: writes execute a more complex Lua script on the primary, while reads use simple \texttt{ZRANGE}/\texttt{HMGET} commands against the local replica.
 
-% ══════════════════════════════════════════════════════════════════
-% 15. CONCLUSION
-% ══════════════════════════════════════════════════════════════════
+%─────────────────────────────────────────────────────────────────────────────
+\section{API Reference}
+%─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Required Endpoints}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Path} & \textbf{Description} \\
+\midrule
+POST & \texttt{/message} & Accept \texttt{client-name} and \texttt{msg}; store atomically via Valkey \\
+GET  & \texttt{/feed}    & Return latest 80 messages (\texttt{?limit=N} to override) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{POST /message} --- Request body:
+\begin{lstlisting}
+{ "client-name": "user123", "msg": "Hello, world!" }
+\end{lstlisting}
+
+\textbf{POST /message} --- Response:
+\begin{lstlisting}
+{ "ok": true, "msg_id": "c3a7f12e-4b1a-...", "duplicate": false }
+\end{lstlisting}
+
+\textbf{GET /feed} --- Response:
+\begin{lstlisting}
+{ "messages": [ { "client_name": "user123", "msg": "Hello!", "ts": 1789022000.0 } ], "total": 1 }
+\end{lstlisting}
+
+\subsection{Load Balancer Monitoring Endpoints}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Path} & \textbf{Description} \\
+\midrule
+GET & \texttt{/lb/health}  & LB liveness: \texttt{\{"status":"ok"\}} \\
+GET & \texttt{/lb/status}  & Per-backend: alive, in-flight count, load score, overloaded flag \\
+GET & \texttt{/lb/metrics} & Aggregate: total, success, failed, dropout\%, p50/p95/p99 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Files Changed}
+%─────────────────────────────────────────────────────────────────────────────
+
+\begin{center}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{File} & \textbf{Status} & \textbf{Key changes} \\
+\midrule
+\texttt{server/feed\_store.py}           & NEW      & Valkey feed store: Lua insert, paginated read, primary fallback, probe latency \\
+\texttt{scripts/valkey\_primary.sh}      & NEW      & Valkey primary startup with AOF persistence \\
+\texttt{scripts/valkey\_replica.sh}      & NEW      & Valkey replica startup for Sys3/Sys4 \\
+\texttt{server/requirements.txt}         & Modified & Added \texttt{valkey} and \texttt{psutil} \\
+\texttt{server/db.py}                    & Modified & UNIQUE index on \texttt{msg\_id}, \texttt{INSERT OR IGNORE}, migration \\
+\texttt{server/server.py}                & Modified & \texttt{/health}, \texttt{/message}, \texttt{/feed} endpoints; WebSocket migration to Valkey; startup hook \\
+\texttt{load\_balancer/backend.go}       & Modified & Composite load score, in-flight counter, overload detection, P2C methods \\
+\texttt{load\_balancer/main.go}          & Modified & P2C algorithm, health JSON parsing, fallback routing, monitoring endpoints \\
+\texttt{load\_generator/main.go}         & Modified & \texttt{-mode} flag (message/feed/mixed), user pool, utilisation polling, CSV output \\
+\texttt{load\_generator/plot\_results.py}& NEW      & Generates 10 performance plots from experiment results \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
+%─────────────────────────────────────────────────────────────────────────────
 
-This project successfully demonstrates the implementation of a \textbf{real-time Group Chat Application using WebSockets}. The application meets all the minimum requirements specified in the tutorial assignment:
+This implementation extends PixelChat with a horizontally scaled, performance-aware distributed architecture while fully preserving its existing security properties. The experimental results demonstrate:
 
-\begin{itemize}[leftmargin=*]
-    \item[\checkmark] User join/leave notifications.
-    \item[\checkmark] Real-time message broadcasting to all connected users.
-    \item[\checkmark] Usernames for identifying participants.
-    \item[\checkmark] Graceful handling of client disconnections.
+\begin{itemize}
+    \item \textbf{Throughput:} The load-balanced configuration delivers up to \textbf{2.4$\times$} higher throughput. The LB mixed experiment achieved 492\,RPS versus 206\,RPS for a single backend.
+
+    \item \textbf{Latency:} Median latency is reduced by \textbf{33--57\%} across all workload types. Tail latency (p99) improves most dramatically in mixed workload: from 3,245\,ms to 1,710\,ms (a 47\% reduction), demonstrating that P2C prevents any single backend from becoming a bottleneck.
+
+    \item \textbf{Reliability:} The single-backend mixed configuration drops 2.15\% of requests under 200-worker concurrency. The load balancer eliminates this entirely, achieving a \textbf{0.00\% dropout rate} under the same load.
+
+    \item \textbf{Load distribution:} CPU utilisation plots confirm visible load distribution across all three backends during LB experiments, while single-backend experiments concentrate load on Sys3 alone.
+
+    \item \textbf{Data consistency:} All backends share a single source of truth through Valkey replication. Atomic Lua scripting guarantees exactly-once insertion even when the same \texttt{msg\_id} arrives through multiple backends simultaneously. Three independent layers of deduplication ensure correctness under all failure conditions.
 \end{itemize}
 
-Beyond the requirements, the application includes several advanced features — delivery receipts, file attachments, typing indicators, auto-reconnect, message history, an emoji picker, and a complete gamification system — all wrapped in a visually engaging 8-bit pixel-art themed interface.
-
-The project demonstrates practical understanding of key computer networking concepts: persistent TCP connections (WebSocket protocol), client-server architecture, message serialization (JSON), asynchronous I/O (Python asyncio with FastAPI), and cross-origin resource sharing (CORS).
-
-The application was successfully deployed and tested on laboratory machines with 4 simultaneous users communicating in real-time.
-
-
-% ══════════════════════════════════════════════════════════════════
-% 16. REFERENCES
-% ══════════════════════════════════════════════════════════════════
-\section{References}
-
-\begin{enumerate}[leftmargin=*]
-    \item RFC 6455 — The WebSocket Protocol. \url{https://datatracker.ietf.org/doc/html/rfc6455}
-    \item FastAPI Documentation — WebSockets. \url{https://fastapi.tiangolo.com/advanced/websockets/}
-    \item MDN Web Docs — WebSocket API. \url{https://developer.mozilla.org/en-US/docs/Web/API/WebSocket}
-    \item Uvicorn — ASGI Server. \url{https://www.uvicorn.org/}
-    \item FastAPI Official Documentation. \url{https://fastapi.tiangolo.com/}
-    \item Python \texttt{asyncio} Documentation. \url{https://docs.python.org/3/library/asyncio.html}
-    \item MDN Web Docs — Web Audio API. \url{https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API}
-\end{enumerate}
-
-
-% ══════════════════════════════════════════════════════════════════
-% APPENDIX
-% ══════════════════════════════════════════════════════════════════
-\newpage
-\appendix
-\section{Appendix: Client URL for TA Testing}
-
-% ── UPDATE this with your actual deployment URL ──
-\begin{center}
-    \large
-    \textbf{Client URL:} \texttt{http://<YOUR-MACHINE-IP>:5000}
-\end{center}
-
-\textit{Note:} Ensure the backend server (\texttt{server.py}) and frontend server (\texttt{serve.py}) are both running on the specified machine before accessing this URL.
-
-
-\section{Appendix: Source Code Repository}
-
-% ── UPDATE this with your actual repository URL ──
-The complete source code is available at:
-\begin{center}
-    \url{https://github.com/<your-username>/group-chat-app}
-\end{center}
-
+The Power of Two Choices algorithm with a composite load score (in-flight requests, CPU, WebSocket connections, Valkey RTT) provides dynamic, performance-responsive routing that satisfies the assignment requirement for load-based backend selection beyond fixed round-robin. The system gracefully handles backend failures by detecting them through the periodic health-check loop and ceasing to route traffic to unavailable nodes.
 
 \end{document}

@@ -1,0 +1,7 @@
+experiment,target_url,requests,concurrency,successful,failed,throughput_rps,dropout_pct,p50_ms,p95_ms,p99_ms,elapsed_sec
+three_backends_new,https://10.1.75.51:5269/message,25000,200,25000,0,538.15,0.00,307.74,645.58,1817.07,46.455
+single_backend_new,https://10.1.75.51:5271/message,25000,200,25000,0,888.57,0.00,188.31,311.28,377.46,28.135
+single_backend_new,https://10.1.75.51:5271/message,45000,350,44867,133,719.44,0.30,414.67,642.72,1923.26,62.363
+three_backends_new,https://10.1.75.51:5269/message,45000,350,44005,995,463.76,2.21,527.00,1375.91,3501.83,94.887
+three_backends_new,https://10.1.75.51:5269/message,45000,350,44832,168,579.87,0.37,513.75,1085.97,2491.85,77.314
+single_backend_new,https://10.1.75.51:5271/message,45000,350,44955,45,712.36,0.10,406.82,657.21,2000.18,63.107
