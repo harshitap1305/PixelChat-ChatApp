@@ -328,9 +328,9 @@ async def post_message(req: SimpleMessageRequest):
     return {"ok": True, "msg_id": msg_id, "duplicate": not inserted}
 
 @app.get("/feed")
-async def get_feed(limit: int = 80):
+async def get_feed(limit: int = 500):
     """
-    Retrieve chat messages. By default returns the latest 80 messages.
+    Retrieve chat messages. By default returns the latest 500 messages.
     Pass ?limit=0 to return all messages (slow when DB is large).
     """
     messages = await feed_store.get_all(DEFAULT_FEED_ROOM, limit=limit)
