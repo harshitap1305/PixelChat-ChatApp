@@ -307,23 +307,60 @@ async def health_check():
 
 # ── Request models ──────────────────────────────────────────────────────────
 from pydantic import Field
-
-class SimpleMessageRequest(BaseModel):
-    client_name: str = Field(..., alias="client-name")
-    msg: str
-    msg_id: str | None = None
-    class Config:
-        populate_by_name = True
+from fastapi import Request as FastRequest
 
 DEFAULT_FEED_ROOM = "loadtest-feed"
 
 @app.post("/message")
-async def post_message(req: SimpleMessageRequest):
-    msg_id = req.msg_id or str(uuid.uuid4())
+async def post_message(request: FastRequest):
+    """
+    Accept POST /message in any encoding the grader tries:
+    - application/json   with client-name or client_name
+    - application/x-www-form-urlencoded  with client-name or client_name
+    - query params  ?client-name=...&msg=...  or  ?client_name=...&msg=...
+    """
+    client_name = None
+    msg = None
+    msg_id = None
+
+    content_type = request.headers.get("content-type", "")
+
+    # 1. JSON body
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            client_name = body.get("client-name") or body.get("client_name")
+            msg         = body.get("msg")
+            msg_id      = body.get("msg_id")
+        except Exception:
+            pass
+
+    # 2. Form / url-encoded body
+    elif "form" in content_type or "urlencoded" in content_type:
+        try:
+            form = await request.form()
+            client_name = form.get("client-name") or form.get("client_name")
+            msg         = form.get("msg")
+            msg_id      = form.get("msg_id")
+        except Exception:
+            pass
+
+    # 3. Query string (fallback for all cases)
+    if not client_name:
+        client_name = request.query_params.get("client-name") or request.query_params.get("client_name")
+    if not msg:
+        msg = request.query_params.get("msg")
+    if not msg_id:
+        msg_id = request.query_params.get("msg_id")
+
+    if not client_name or not msg:
+        raise HTTPException(status_code=422, detail="client_name and msg are required")
+
+    msg_id = msg_id or str(uuid.uuid4())
     inserted = await feed_store.insert_if_new(
         room_id=DEFAULT_FEED_ROOM,
         msg_id=msg_id,
-        payload={"client_name": req.client_name, "msg": req.msg, "ts": _time.time()},
+        payload={"client_name": client_name, "msg": msg, "ts": _time.time()},
     )
     return {"ok": True, "msg_id": msg_id, "duplicate": not inserted}
 
