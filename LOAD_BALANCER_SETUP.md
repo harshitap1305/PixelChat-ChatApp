@@ -423,3 +423,40 @@ Always start in this exact order to ensure successful connections:
 | Valkey Replica| Sys3 | 4000 | 4271 |
 | Backend-3 | Sys4 | 5000 | 5272 |
 | Valkey Replica| Sys4 | 4000 | 4272 |
+
+
+---
+
+## How to Completely Wipe Data (For a Fresh Start)
+
+Run these exact commands to completely wipe all chat history, databases, and memory so you have a 100% fresh start before a load test.
+
+### 1. On Sys2 (Primary Database Server)
+Run these commands in the terminal to wipe the SQLite database, flush the Valkey memory, and delete its persistent storage files:
+```bash
+# 1. Delete the SQLite database file
+rm -f ~/PixelChat-ChatApp/server/chat.db
+
+# 2. Flush Valkey memory (if it's currently running)
+redis-cli -p 4000 flushall
+
+# 3. Stop Valkey and delete its persistent AOF/RDB files
+pkill -f redis-server
+rm -f ~/PixelChat-ChatApp/*.aof
+rm -f ~/PixelChat-ChatApp/*.rdb
+```
+*(After this, you can restart Valkey Primary with `bash scripts/valkey_primary.sh 4000` and restart your backend).*
+
+### 2. On Sys3 and Sys4 (Replica Servers)
+Run these commands to stop the replicas and clear any leftover storage files:
+```bash
+# 1. Stop the replica
+pkill -f redis-server
+
+# 2. Delete any synced storage files
+rm -f ~/PixelChat-ChatApp/*.rdb
+rm -f ~/PixelChat-ChatApp/*.aof
+```
+*(After this, you can restart your replicas using `bash scripts/valkey_replica.sh 10.1.75.51 4270 4000` and restart your backends).*
+
+Once you've done this across your servers, your app will be completely empty (0 users, 0 messages) and perfectly clean for your final load tests!
