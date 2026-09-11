@@ -235,11 +235,31 @@ manager = ConnectionManager()
 
 BACKEND_NAME = os.environ.get("BACKEND_NAME", "unknown")
 
+_in_flight_count = 0
+_lag_ewma_ms = 0.0
+
 @app.middleware("http")
-async def add_backend_id_header(request, call_next):
-    response = await call_next(request)
-    response.headers["X-Backend-Id"] = BACKEND_NAME
-    return response
+async def track_in_flight_and_backend(request, call_next):
+    global _in_flight_count
+    _in_flight_count += 1
+    try:
+        response = await call_next(request)
+        response.headers["X-Backend-Id"] = BACKEND_NAME
+        return response
+    finally:
+        _in_flight_count -= 1
+
+async def track_event_loop_lag():
+    global _lag_ewma_ms
+    alpha = 0.3
+    while True:
+        start = _time.time()
+        await asyncio.sleep(0.25)
+        lag = max(0.0, (_time.time() - start) - 0.25) * 1000.0
+        if _lag_ewma_ms == 0.0:
+            _lag_ewma_ms = lag
+        else:
+            _lag_ewma_ms = alpha * lag + (1 - alpha) * _lag_ewma_ms
 
 # Per-room cleanup tasks: room_id → asyncio.Task
 cleanup_tasks: dict[str, asyncio.Task] = {}
@@ -279,6 +299,9 @@ async def health_check():
         "load_avg_1m": load1,
         "active_ws_connections": len(manager.active_connections),
         "valkey_rtt_ms": await feed_store.probe_latency(),
+        "lag_ms": _lag_ewma_ms,
+        "in_flight": _in_flight_count,
+        "backend_name": BACKEND_NAME,
     }
 
 
@@ -332,8 +355,12 @@ class CreateRoomRequest(BaseModel):
 @app.on_event("startup")
 async def startup():
     """Initialise the SQLite database and Valkey feed store on server start."""
-    db.init_db()
+    # We only initialize SQLite if we are NOT running behind a proxy that shares it,
+    # or if we are the proxy itself. For lab purposes, db.py handles the logic.
+    if not os.environ.get("DB_PROXY_URL"):
+        db.init_db()
     await feed_store.init_feed_store()
+    asyncio.create_task(track_event_loop_lag())
 
 
 @app.get("/config.js")

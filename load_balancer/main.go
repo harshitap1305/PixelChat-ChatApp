@@ -32,7 +32,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -64,18 +64,15 @@ func (lb *LoadBalancer) nextBackend() *Backend {
 	}
 	if n == 1 {
 		b := lb.backends[0]
-		if b.IsAlive() && !b.IsOverloaded() {
-			return b
-		}
-		if b.IsAlive() { // fallback if all overloaded
+		if b.IsAlive() {
 			return b
 		}
 		return nil
 	}
 
 	// Pick two distinct random indices
-	i := rand.Intn(n)
-	j := rand.Intn(n - 1)
+	i := rand.IntN(n)
+	j := rand.IntN(n - 1)
 	if j >= i {
 		j++
 	}
@@ -83,33 +80,19 @@ func (lb *LoadBalancer) nextBackend() *Backend {
 	b1 := lb.backends[i]
 	b2 := lb.backends[j]
 
-	var candidate *Backend
-	if b1.IsAlive() && !b1.IsOverloaded() && b2.IsAlive() && !b2.IsOverloaded() {
-		if b1.InFlightCount() <= b2.InFlightCount() {
-			candidate = b1
-		} else {
-			candidate = b2
+	// Choose the best of two using Score
+	if b1.IsAlive() && b2.IsAlive() {
+		if b1.Score() <= b2.Score() {
+			return b1
 		}
-	} else if b1.IsAlive() && !b1.IsOverloaded() {
-		candidate = b1
-	} else if b2.IsAlive() && !b2.IsOverloaded() {
-		candidate = b2
+		return b2
+	} else if b1.IsAlive() {
+		return b1
+	} else if b2.IsAlive() {
+		return b2
 	}
 
-	if candidate != nil {
-		return candidate
-	}
-
-	// Fallback 1: Try round-robin skipping overloaded
-	for k := 0; k < n; k++ {
-		idx := lb.next.Add(1) % uint64(n)
-		b := lb.backends[idx]
-		if b.IsAlive() && !b.IsOverloaded() {
-			return b
-		}
-	}
-
-	// Fallback 2: Any alive backend
+	// Fallback: Any alive backend
 	for k := 0; k < n; k++ {
 		idx := lb.next.Add(1) % uint64(n)
 		b := lb.backends[idx]
@@ -136,27 +119,32 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 			healthURL := b.URL.String() + "/health"
 			resp, err := client.Get(healthURL)
 
-			wasAlive := b.IsAlive()
 			if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
-				b.SetAlive(false)
-				b.SetLoadScore(9999.0) // Penalize dead backend
-				if wasAlive {
-					log.Printf("[HEALTH] ⬇  Backend DOWN: %s", b.URL)
+				// If recently served a proxy request, give it a pass
+				if lastGood := b.lastGoodNanos.Load(); lastGood > 0 && time.Since(time.Unix(0, lastGood)) < 5*time.Second {
+					b.failStreak.Store(0)
+					b.okStreak.Store(3)
+				} else {
+					fails := b.failStreak.Add(1)
+					if fails >= 2 && b.IsAlive() {
+						b.SetAlive(false)
+						log.Printf("[HEALTH] ⬇  Backend DOWN: %s", b.URL)
+					}
+					b.okStreak.Store(0)
 				}
 			} else {
 				var h BackendHealth
 				if err := json.NewDecoder(resp.Body).Decode(&h); err == nil {
-					score := b.computeLoadScore(h)
-					b.SetLoadScore(score)
-					// NOTE: overloaded flag is now computed from live in_flight in IsOverloaded().
-					// We keep the score for monitoring/status endpoints only.
+					b.UpdateHealth(h)
 				}
 				resp.Body.Close()
 
-				b.SetAlive(true)
-				if !wasAlive {
+				oks := b.okStreak.Add(1)
+				if oks >= 3 && !b.IsAlive() {
+					b.SetAlive(true)
 					log.Printf("[HEALTH] ⬆  Backend UP:   %s", b.URL)
 				}
+				b.failStreak.Store(0)
 			}
 		}
 		time.Sleep(interval)
@@ -195,6 +183,7 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("X-Proxy-Failed") != "true" {
 		elapsed := time.Since(start)
+		b.ObserveLatency(elapsed)
 		lb.metrics.Success.Add(1)
 		lb.metrics.RecordLatency(elapsed)
 	}

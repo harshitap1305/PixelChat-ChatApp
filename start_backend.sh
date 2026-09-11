@@ -25,7 +25,7 @@ fi
 
 cd "$(dirname "$0")"
 
-BACKEND_NAME="${BACKEND_NAME:-backend}"
+export BACKEND_NAME="${BACKEND_NAME:-backend}"
 PORT="${PORT:-5000}"
 
 echo "========================================================"
