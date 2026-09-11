@@ -65,11 +65,17 @@ async def _process_batch(batch):
         pipe = _primary.pipeline(transaction=False)
         for room_id, msg_id, payload, _ in batch:
             ts = payload.get("created_at_ts") or time.time()
-            _insert_script(keys=[f"msg:{room_id}", f"msgorder:{room_id}"], args=[msg_id, json.dumps(payload), float(ts)], client=pipe)
-        
+            # Must await the script registration call even inside a pipeline
+            await _insert_script(
+                keys=[f"msg:{room_id}", f"msgorder:{room_id}"],
+                args=[msg_id, json.dumps(payload), float(ts)],
+                client=pipe,
+            )
+
         results = await pipe.execute()
+        # Lua script returns 1 value per call → results[i] maps to batch[i]
         for i, res in enumerate(results):
-            if not batch[i][3].done():
+            if i < len(batch) and not batch[i][3].done():
                 batch[i][3].set_result(bool(res))
     except Exception as e:
         for _, _, _, fut in batch:
