@@ -77,7 +77,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_lt_msg_id
 
 _local_pool_lock = threading.Lock()
 _local_pool: list[sqlite3.Connection] = []
-_LOCAL_POOL_SIZE = 4
+_LOCAL_POOL_SIZE = 3
 
 
 def _make_local_conn() -> sqlite3.Connection:
@@ -86,7 +86,7 @@ def _make_local_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")   # safe + fast
-    conn.execute("PRAGMA cache_size=-8000")     # ~8 MB per connection instead of 64
+    conn.execute("PRAGMA cache_size=-2000")   # ~2MB per conn, was -64000 (64MB)
     conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(_LOADTEST_SCHEMA)

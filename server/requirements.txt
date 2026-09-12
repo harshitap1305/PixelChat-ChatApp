@@ -7,3 +7,4 @@ bcrypt
 requests
 valkey
 psutil
+orjson

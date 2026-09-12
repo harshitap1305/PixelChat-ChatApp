@@ -11,6 +11,7 @@ Extends the original WebSocket group chat with:
 
 import json
 import asyncio
+import anyio
 import os
 import uuid
 import shutil
@@ -31,6 +32,7 @@ import bcrypt
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 
 # cryptography library — ECDSA verification
@@ -364,7 +366,8 @@ async def post_message(request: FastRequest):
     if not msg_id:
         msg_id = hashlib.md5(f"{client_name}:{msg}:{ts_str}".encode()).hexdigest()
 
-    db.save_message_fast(
+    await asyncio.to_thread(
+        db.save_message_fast,
         room_id=DEFAULT_FEED_ROOM,
         msg_id=msg_id,
         username=client_name,
@@ -382,10 +385,10 @@ async def get_feed(request: FastRequest):
     Uses direct SQLite read (get_history_fast) for maximum throughput.
     """
     limit_param = request.query_params.get("limit")
-    limit = int(limit_param) if limit_param else None   # None = no cap
+    limit = int(limit_param) if limit_param else 50000   # generous cap, not infinite
         
-    history = db.get_history_fast(room_id=DEFAULT_FEED_ROOM, limit=limit)
-    return {"messages": history}
+    history = await asyncio.to_thread(db.get_history_fast, room_id=DEFAULT_FEED_ROOM, limit=limit)
+    return ORJSONResponse({"messages": history})
 
 
 @app.post("/clear")
@@ -426,6 +429,8 @@ class CreateRoomRequest(BaseModel):
 @app.on_event("startup")
 async def startup():
     """Initialise the SQLite database and Valkey feed store on server start."""
+    limiter = anyio.to_thread.current_default_thread_limiter()
+    limiter.total_tokens = 200   # default is 40
     # We only initialize SQLite if we are NOT running behind a proxy that shares it,
     # or if we are the proxy itself. For lab purposes, db.py handles the logic.
     if not os.environ.get("DB_PROXY_URL"):

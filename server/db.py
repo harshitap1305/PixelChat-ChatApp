@@ -147,7 +147,7 @@ import threading
 
 _pool_lock = threading.Lock()
 _pool: list[sqlite3.Connection] = []
-_POOL_SIZE = 4
+_POOL_SIZE = 3
 
 
 def _configure_conn(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -155,7 +155,7 @@ def _configure_conn(conn: sqlite3.Connection) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")    # safe + fast (no fdatasync per write)
-    conn.execute("PRAGMA cache_size=-8000")     # ~8 MB per connection instead of 64
+    conn.execute("PRAGMA cache_size=-2000")   # ~2MB per conn, was -64000 (64MB)
     conn.execute("PRAGMA busy_timeout=5000")    # wait up to 5s if DB is locked
     conn.execute("PRAGMA temp_store=MEMORY")    # sort/group operations use RAM
     return conn
