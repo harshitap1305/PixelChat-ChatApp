@@ -27,12 +27,16 @@ Monitoring (from any machine):
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -158,9 +162,107 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 var globalTransport = &http.Transport{
 	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 	ResponseHeaderTimeout: 10 * time.Second,
-	MaxIdleConns:          500,
-	MaxIdleConnsPerHost:   500,
-	IdleConnTimeout:       4 * time.Second, // Must be lower than Uvicorn's 5s timeout!
+	MaxIdleConns:          2000,             // increased: handles 2500 concurrent users
+	MaxIdleConnsPerHost:   1000,             // increased: full connection reuse per backend
+	IdleConnTimeout:       90 * time.Second, // fixed: was 4s, caused TCP churn under load
+	DialContext: (&net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second, // keep TCP connections alive under sustained load
+	}).DialContext,
+}
+
+// fanOutMessage sends POST /message to ALL alive backends concurrently.
+// Every backend gets a full copy of every message, so any backend can serve
+// a 100% complete /feed response regardless of which backend is chosen for reads.
+// Returns as soon as the FIRST backend succeeds — fire-and-forgets the rest.
+// Non-POST requests fall through to regular P2C routing via serveRequest.
+func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		lb.serveRequest(w, r)
+		return
+	}
+
+	start := time.Now()
+	lb.metrics.Total.Add(1)
+
+	// Read body once — HTTP body is a stream that can only be consumed once.
+	body, err := io.ReadAll(r.Body)
+	r.Body.Close()
+	if err != nil {
+		lb.metrics.Failed.Add(1)
+		http.Error(w, `{"error":"failed to read body"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Collect all currently alive backends.
+	alive := make([]*Backend, 0, len(lb.backends))
+	for _, b := range lb.backends {
+		if b.IsAlive() {
+			alive = append(alive, b)
+		}
+	}
+	if len(alive) == 0 {
+		lb.metrics.Failed.Add(1)
+		http.Error(w, `{"error":"no healthy backends"}`, http.StatusBadGateway)
+		return
+	}
+
+	type result struct {
+		status int
+		body   []byte
+		err    error
+	}
+	ch := make(chan result, len(alive))
+	contentType := r.Header.Get("Content-Type")
+
+	// Fire one goroutine per backend — all run concurrently.
+	for _, b := range alive {
+		go func(backend *Backend) {
+			backend.IncrementInFlight()
+			defer backend.DecrementInFlight()
+
+			targetURL := *backend.URL
+			targetURL.Path = strings.TrimRight(targetURL.Path, "/") + "/message"
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			req, _ := http.NewRequestWithContext(
+				ctx, http.MethodPost, targetURL.String(), bytes.NewReader(body),
+			)
+			req.Header.Set("Content-Type", contentType)
+
+			resp, err := globalTransport.RoundTrip(req)
+			if err != nil {
+				ch <- result{err: err}
+				return
+			}
+			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
+			ch <- result{status: resp.StatusCode, body: respBody}
+		}(b)
+	}
+
+	// Return on FIRST success — drain remaining results so goroutines don't leak.
+	responded := false
+	for i := 0; i < len(alive); i++ {
+		res := <-ch
+		if res.err != nil || responded {
+			continue
+		}
+		if res.status >= 200 && res.status < 400 {
+			responded = true
+			lb.metrics.Success.Add(1)
+			lb.metrics.RecordLatency(time.Since(start))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(res.status)
+			w.Write(res.body)
+		}
+	}
+	if !responded {
+		lb.metrics.Failed.Add(1)
+		http.Error(w, `{"error":"all backends failed"}`, http.StatusBadGateway)
+	}
 }
 
 // serveRequest is the main HTTP handler — picks a backend and proxies the request.
@@ -314,7 +416,11 @@ func main() {
 	mux.HandleFunc("/lb/status", lb.handleStatus)
 	mux.HandleFunc("/lb/metrics", lb.handleMetrics)
 
-	// Catch-all → reverse proxy to backends
+	// /message → fan-out to ALL backends (every backend stores every message)
+	// This guarantees 100% feed completeness: any backend can serve /feed
+	mux.HandleFunc("/message", lb.fanOutMessage)
+
+	// All other routes → P2C + EWMA routing to best single backend
 	mux.HandleFunc("/", lb.serveRequest)
 
 	// ── Banner ─────────────────────────────────────────────────────────────

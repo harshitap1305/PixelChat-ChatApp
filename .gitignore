@@ -31,3 +31,4 @@ server/chat.db
 *.pem
 
 pdf-forge-exports/
+reference-code/
