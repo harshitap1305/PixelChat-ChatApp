@@ -381,10 +381,8 @@ async def get_feed(request: FastRequest):
     Uses the limit provided by the grader to avoid OOM as messages accumulate.
     Uses direct SQLite read (get_history_fast) for maximum throughput.
     """
-    try:
-        limit = int(request.query_params.get("limit", "80"))
-    except ValueError:
-        limit = 80
+    limit_param = request.query_params.get("limit")
+    limit = int(limit_param) if limit_param else None   # None = no cap
         
     history = db.get_history_fast(room_id=DEFAULT_FEED_ROOM, limit=limit)
     return {"messages": history}

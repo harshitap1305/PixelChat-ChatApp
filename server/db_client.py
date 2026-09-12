@@ -77,7 +77,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_lt_msg_id
 
 _local_pool_lock = threading.Lock()
 _local_pool: list[sqlite3.Connection] = []
-_LOCAL_POOL_SIZE = 8
+_LOCAL_POOL_SIZE = 4
 
 
 def _make_local_conn() -> sqlite3.Connection:
@@ -86,7 +86,7 @@ def _make_local_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")   # safe + fast
-    conn.execute("PRAGMA cache_size=-64000")    # 64 MB page cache
+    conn.execute("PRAGMA cache_size=-8000")     # ~8 MB per connection instead of 64
     conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(_LOADTEST_SCHEMA)
@@ -139,18 +139,25 @@ def save_message_fast(room_id: str, msg_id: str, username: str, msg: str, timest
         _put_conn(conn)
 
 
-def get_history_fast(room_id: str, limit: int = 100) -> list[dict]:
+def get_history_fast(room_id: str, limit: int | None = None) -> list[dict]:
     """
     Read messages from LOCAL SQLite — does NOT go through the DB proxy.
     Returns both 'ciphertext' and 'msg' keys for grader compatibility.
     """
     conn = _get_conn()
     try:
-        rows = conn.execute(
-            "SELECT msg_id, username, ciphertext, timestamp "
-            "FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?",
-            (room_id, limit),
-        ).fetchall()
+        if limit is None:
+            rows = conn.execute(
+                "SELECT msg_id, username, ciphertext, timestamp "
+                "FROM messages WHERE room_id = ? ORDER BY id DESC",
+                (room_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT msg_id, username, ciphertext, timestamp "
+                "FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?",
+                (room_id, limit),
+            ).fetchall()
     finally:
         _put_conn(conn)
 

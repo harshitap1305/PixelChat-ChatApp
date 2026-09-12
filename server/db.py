@@ -147,7 +147,7 @@ import threading
 
 _pool_lock = threading.Lock()
 _pool: list[sqlite3.Connection] = []
-_POOL_SIZE = 8
+_POOL_SIZE = 4
 
 
 def _configure_conn(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -155,7 +155,7 @@ def _configure_conn(conn: sqlite3.Connection) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")    # safe + fast (no fdatasync per write)
-    conn.execute("PRAGMA cache_size=-64000")    # 64 MB page cache
+    conn.execute("PRAGMA cache_size=-8000")     # ~8 MB per connection instead of 64
     conn.execute("PRAGMA busy_timeout=5000")    # wait up to 5s if DB is locked
     conn.execute("PRAGMA temp_store=MEMORY")    # sort/group operations use RAM
     return conn
@@ -383,7 +383,7 @@ def save_message_fast(room_id: str, msg_id: str, username: str, msg: str, timest
         _put_conn(conn)
 
 
-def get_history_fast(room_id: str, limit: int = 100) -> list[dict]:
+def get_history_fast(room_id: str, limit: int | None = None) -> list[dict]:
     """
     Lightweight history retrieval for the load-gen /feed hot path.
     Skips HMAC verification and whisper filtering for maximum throughput.
@@ -391,11 +391,18 @@ def get_history_fast(room_id: str, limit: int = 100) -> list[dict]:
     """
     conn = _get_conn()
     try:
-        rows = conn.execute(
-            "SELECT msg_id, username, ciphertext, timestamp "
-            "FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?",
-            (room_id, limit),
-        ).fetchall()
+        if limit is None:
+            rows = conn.execute(
+                "SELECT msg_id, username, ciphertext, timestamp "
+                "FROM messages WHERE room_id = ? ORDER BY id DESC",
+                (room_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT msg_id, username, ciphertext, timestamp "
+                "FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?",
+                (room_id, limit),
+            ).fetchall()
     finally:
         _put_conn(conn)
 
