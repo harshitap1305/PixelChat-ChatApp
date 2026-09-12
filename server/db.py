@@ -156,7 +156,7 @@ def _configure_conn(conn: sqlite3.Connection) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")    # safe + fast (no fdatasync per write)
     conn.execute("PRAGMA cache_size=-2000")   # ~2MB per conn, was -64000 (64MB)
-    conn.execute("PRAGMA busy_timeout=5000")    # wait up to 5s if DB is locked
+    conn.execute("PRAGMA busy_timeout=1000")    # wait up to 1s if DB is locked
     conn.execute("PRAGMA temp_store=MEMORY")    # sort/group operations use RAM
     return conn
 
@@ -198,7 +198,7 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")  # wait up to 5 s if locked
+    conn.execute("PRAGMA busy_timeout=1000")  # wait up to 1 s if locked
     return conn
 
 
@@ -377,6 +377,30 @@ def save_message_fast(room_id: str, msg_id: str, username: str, msg: str, timest
         )
         conn.commit()
         return cur.lastrowid or 0
+    except Exception:
+        return 0
+    finally:
+        _put_conn(conn)
+
+
+def save_messages_batch_fast(batch: list) -> int:
+    """
+    Lightweight batched message save for the load-gen /message hot path.
+    batch is a list of tuples: (room_id, msg_id, username, msg, timestamp)
+    Returns the number of rows inserted.
+    """
+    if not batch:
+        return 0
+    conn = _get_conn()
+    try:
+        cur = conn.executemany(
+            "INSERT OR IGNORE INTO messages "
+            "(room_id, msg_id, username, avatar, ciphertext, iv, signature, public_key, timestamp, hmac_digest, sig_valid) "
+            "VALUES (?, ?, ?, 'wizard', ?, 'x', 'x', '{}', ?, 'x', 1)",
+            batch,
+        )
+        conn.commit()
+        return cur.rowcount
     except Exception:
         return 0
     finally:

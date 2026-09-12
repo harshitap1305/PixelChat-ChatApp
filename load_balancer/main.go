@@ -35,16 +35,72 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"runtime"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 )
+
+// ── Resource Limits ──────────────────────────────────────────────────────────
+
+func applyCPUQuota() {
+	data, err := os.ReadFile("/sys/fs/cgroup/cpu.max")
+	if err != nil {
+		return
+	}
+	fields := strings.Fields(strings.TrimSpace(string(data)))
+	if len(fields) != 2 || fields[0] == "max" {
+		return
+	}
+	quota, _ := strconv.ParseFloat(fields[0], 64)
+	period, _ := strconv.ParseFloat(fields[1], 64)
+	if period > 0 && quota > 0 {
+		procs := int(quota/period) + 1
+		runtime.GOMAXPROCS(procs)
+	}
+}
+
+func applyMemoryLimit() {
+	data, err := os.ReadFile("/sys/fs/cgroup/memory.max")
+	if err != nil {
+		return
+	}
+	text := strings.TrimSpace(string(data))
+	if text == "max" {
+		return
+	}
+	limit, err := strconv.ParseUint(text, 10, 64)
+	if err == nil && limit > 0 {
+		soft := int64(float64(limit) * 0.35)
+		debug.SetMemoryLimit(soft)
+		log.Printf("[INIT] cgroup mem=%dMB, GC soft limit=%dMB", limit/(1<<20), soft/(1<<20))
+	}
+}
+
+type cappedListener struct {
+	net.Listener
+}
+
+func (l *cappedListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	if tc, ok := c.(*net.TCPConn); ok {
+		tc.SetReadBuffer(16 * 1024)
+		tc.SetWriteBuffer(32 * 1024)
+	}
+	return c, nil
+}
 
 // ── LoadBalancer ──────────────────────────────────────────────────────────────
 
@@ -150,6 +206,36 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 				}
 				b.failStreak.Store(0)
 			}
+		}
+		time.Sleep(interval)
+	}
+}
+
+// statsLoop pulls each backend's own view of itself
+func (lb *LoadBalancer) statsLoop(interval time.Duration) {
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
+		},
+		Timeout: 2 * time.Second,
+	}
+
+	for {
+		for _, b := range lb.backends {
+			if !b.IsAlive() {
+				continue
+			}
+			resp, err := client.Get(b.URL.String() + "/stats")
+			if err != nil {
+				continue
+			}
+
+			var parsed BackendHealth
+			if decodeErr := json.NewDecoder(resp.Body).Decode(&parsed); decodeErr == nil {
+				b.cpuPercent.Store(math.Float64bits(parsed.CPUPercent))
+				b.reportedLagMicros.Store(int64(parsed.LagMs * 1000.0))
+			}
+			resp.Body.Close()
 		}
 		time.Sleep(interval)
 	}
@@ -351,6 +437,9 @@ func (lb *LoadBalancer) handleMetrics(w http.ResponseWriter, r *http.Request) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 func main() {
+	applyCPUQuota()
+	applyMemoryLimit()
+
 	// ── CLI flags ──────────────────────────────────────────────────────────
 	port := flag.Int("port", 5000,
 		"Port the load balancer listens on (internal).")
@@ -407,6 +496,7 @@ func main() {
 
 	// ── Start health checker ───────────────────────────────────────────────
 	go lb.healthLoop(*healthInterval)
+	go lb.statsLoop(*healthInterval)
 
 	// ── Register routes ────────────────────────────────────────────────────
 	mux := http.NewServeMux()
@@ -457,13 +547,23 @@ func main() {
 	if certExists {
 		fmt.Printf("  Mode: HTTPS (cert: %s)\n", *certFile)
 		fmt.Println(divider)
-		if err := http.ListenAndServeTLS(addr, *certFile, *keyFile, mux); err != nil {
+		server := &http.Server{Addr: addr, Handler: mux}
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Fatalf("[FATAL] TCP listen error: %v", err)
+		}
+		if err := server.ServeTLS(&cappedListener{ln}, *certFile, *keyFile); err != nil {
 			log.Fatalf("[FATAL] HTTPS server error: %v", err)
 		}
 	} else {
 		fmt.Printf("  Mode: HTTP (no cert found at %q — running plain HTTP)\n", *certFile)
 		fmt.Println(divider)
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		server := &http.Server{Addr: addr, Handler: mux}
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Fatalf("[FATAL] TCP listen error: %v", err)
+		}
+		if err := server.Serve(&cappedListener{ln}); err != nil {
 			log.Fatalf("[FATAL] HTTP server error: %v", err)
 		}
 	}

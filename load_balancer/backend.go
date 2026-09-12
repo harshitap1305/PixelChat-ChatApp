@@ -25,6 +25,7 @@ type Backend struct {
 	inFlight          atomic.Int64
 	latencyEWMAMicros atomic.Int64
 	reportedLagMicros atomic.Int64
+	cpuPercent        atomic.Uint64 // stored as float64 bits
 	lastGoodNanos     atomic.Int64
 	failStreak        atomic.Int32
 	okStreak          atomic.Int32
@@ -77,6 +78,7 @@ func (b *Backend) ObserveLatency(d time.Duration) {
 
 func (b *Backend) UpdateHealth(h BackendHealth) {
 	b.reportedLagMicros.Store(int64(h.LagMs * 1000.0))
+	b.cpuPercent.Store(math.Float64bits(h.CPUPercent))
 }
 
 func (b *Backend) Score() float64 {
@@ -89,9 +91,11 @@ func (b *Backend) Score() float64 {
 	}
 	queue := float64(b.InFlightCount() + 1)
 	lagMs := float64(b.reportedLagMicros.Load()) / 1000.0
+	cpu := math.Float64frombits(b.cpuPercent.Load())
 	
-	score := queue*svcMs + lagMs
-	if score == 0 {
+	// Weight CPU heavily if it gets high
+	score := queue*svcMs + lagMs + (cpu * cpu / 10.0)
+	if score <= 0 {
 		score = 1.0 // baseline
 	}
 	return score

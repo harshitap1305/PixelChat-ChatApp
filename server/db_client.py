@@ -88,7 +88,7 @@ def _make_local_conn() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")   # safe + fast
     conn.execute("PRAGMA cache_size=-2000")   # ~2MB per conn, was -64000 (64MB)
     conn.execute("PRAGMA temp_store=MEMORY")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=1000")
     conn.executescript(_LOADTEST_SCHEMA)
     return conn
 
@@ -133,6 +133,30 @@ def save_message_fast(room_id: str, msg_id: str, username: str, msg: str, timest
         )
         conn.commit()
         return cur.lastrowid or 0
+    except Exception:
+        return 0
+    finally:
+        _put_conn(conn)
+
+
+def save_messages_batch_fast(batch: list) -> int:
+    """
+    Lightweight batched message save for the load-gen /message hot path.
+    batch is a list of tuples: (room_id, msg_id, username, msg, timestamp)
+    Returns the number of rows inserted.
+    """
+    if not batch:
+        return 0
+    conn = _get_conn()
+    try:
+        cur = conn.executemany(
+            "INSERT OR IGNORE INTO messages "
+            "(room_id, msg_id, username, avatar, ciphertext, iv, signature, public_key, timestamp, hmac_digest, sig_valid) "
+            "VALUES (?, ?, ?, 'wizard', ?, 'x', 'x', '{}', ?, 'x', 1)",
+            batch,
+        )
+        conn.commit()
+        return cur.rowcount
     except Exception:
         return 0
     finally:
