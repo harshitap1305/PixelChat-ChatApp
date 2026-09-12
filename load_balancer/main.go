@@ -329,26 +329,31 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 		}(b)
 	}
 
-	// Return on FIRST success — drain remaining results so goroutines don't leak.
-	responded := false
+	// Return on FIRST success — drain remaining results in background so goroutines don't leak.
 	for i := 0; i < len(alive); i++ {
 		res := <-ch
-		if res.err != nil || responded {
-			continue
-		}
-		if res.status >= 200 && res.status < 400 {
-			responded = true
+		if res.err == nil && res.status >= 200 && res.status < 400 {
 			lb.metrics.Success.Add(1)
 			lb.metrics.RecordLatency(time.Since(start))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(res.status)
 			w.Write(res.body)
+			
+			// Drain remaining in background so we don't block the client
+			remaining := len(alive) - 1 - i
+			if remaining > 0 {
+				go func(count int) {
+					for j := 0; j < count; j++ {
+						<-ch
+					}
+				}(remaining)
+			}
+			return
 		}
 	}
-	if !responded {
-		lb.metrics.Failed.Add(1)
-		http.Error(w, `{"error":"all backends failed"}`, http.StatusBadGateway)
-	}
+	
+	lb.metrics.Failed.Add(1)
+	http.Error(w, `{"error":"all backends failed"}`, http.StatusBadGateway)
 }
 
 // serveRequest is the main HTTP handler — picks a backend and proxies the request.
