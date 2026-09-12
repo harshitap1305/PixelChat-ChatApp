@@ -289,7 +289,7 @@ CLEANUP_TIMEOUT = int(os.environ.get("CLEANUP_TIMEOUT", 300))
 
 import collections
 
-_write_queue: asyncio.Queue = asyncio.Queue(maxsize=10000)
+_write_queue: asyncio.Queue = asyncio.Queue()
 
 _feed_messages = collections.deque(maxlen=100000)
 _feed_cache_plain = b'{"messages":[]}'
@@ -298,19 +298,34 @@ _feed_dirty = False
 
 async def _rebuild_feed_loop():
     global _feed_cache_plain, _feed_cache_gzip, _feed_dirty
+    last_rebuild = 0.0
+    import time
     while True:
-        await asyncio.sleep(0.25)
-        if _feed_dirty:
-            # Build full snapshot
-            snapshot = b'{"messages":[' + b','.join(_feed_messages) + b']}'
-            _feed_cache_plain = snapshot
-            _feed_dirty = False
+        await asyncio.sleep(0.1)
+        if not _feed_dirty:
+            continue
             
-            def zip_it(data):
-                import gzip
-                return gzip.compress(data, compresslevel=1)
+        now = time.time()
+        # Scale rebuild interval: larger feed = less frequent rebuilds (up to 1.5s)
+        # Prevents constant 10MB allocations and gzip compression from thrashing CPU/Memory
+        interval = min(1.5, max(0.25, len(_feed_messages) / 20000.0))
+        if now - last_rebuild < interval:
+            continue
             
+        last_rebuild = now
+        # Build full snapshot
+        snapshot = b'{"messages":[' + b','.join(_feed_messages) + b']}'
+        _feed_cache_plain = snapshot
+        _feed_dirty = False
+        
+        def zip_it(data):
+            import gzip
+            return gzip.compress(data, compresslevel=1)
+        
+        try:
             _feed_cache_gzip = await asyncio.to_thread(zip_it, _feed_cache_plain)
+        except Exception:
+            pass
 
 async def _writer_loop():
     """One coroutine, all writes go through here in order to prevent SQLite lock contention."""
@@ -457,7 +472,7 @@ async def get_feed(request: FastRequest):
     Load-gen feed retrieval hot path.
     Uses O(1) byte-buffer cache instead of querying database.
     """
-    from fastapi import Response
+    from fastapi.responses import StreamingResponse
     accept = request.headers.get("accept-encoding", "")
     
     limit_param = request.query_params.get("limit")
@@ -466,13 +481,28 @@ async def get_feed(request: FastRequest):
         if limit > 0 and limit < len(_feed_messages):
             # Dynamic slice for specific limit requests
             sliced = list(_feed_messages)[-limit:]
-            body = b'{"messages":[' + b','.join(sliced) + b']}'
-            return Response(content=body, media_type="application/json")
+            
+            async def stream_feed_dynamic(messages):
+                yield b'{"messages":['
+                first = True
+                for msg in messages:
+                    if not first:
+                        yield b','
+                    else:
+                        first = False
+                    yield msg
+                yield b']}'
+                
+            return StreamingResponse(stream_feed_dynamic(sliced), media_type="application/json")
     
+    def iter_bytes(data: bytes, chunk_size: int = 65536):
+        for i in range(0, len(data), chunk_size):
+            yield data[i:i+chunk_size]
+            
     if "gzip" in accept and _feed_cache_gzip:
-        return Response(content=_feed_cache_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
+        return StreamingResponse(iter_bytes(_feed_cache_gzip), media_type="application/json", headers={"Content-Encoding": "gzip"})
     
-    return Response(content=_feed_cache_plain, media_type="application/json")
+    return StreamingResponse(iter_bytes(_feed_cache_plain), media_type="application/json")
 
 
 @app.post("/clear")
@@ -1261,6 +1291,108 @@ async def websocket_endpoint(websocket: WebSocket):
                     "users": manager.get_room_users(room_id),
                 })
 
+
+# ── Raw ASGI Fast Path ──────────────────────────────────────────────────────────
+
+_fastapi_app = app
+
+async def send_asgi_response_stream(send, status: int, headers: list, body: bytes):
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    if body:
+        for i in range(0, len(body), 65536):
+            await send({"type": "http.response.body", "body": body[i:i+65536], "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+    else:
+        await send({"type": "http.response.body", "body": b""})
+
+async def fast_asgi_app(scope, receive, send):
+    if scope["type"] == "http":
+        path = scope["path"]
+        method = scope["method"]
+        
+        if path == "/feed" and method == "GET":
+            global _in_flight_count, _feed_cache_plain, _feed_cache_gzip
+            _in_flight_count += 1
+            try:
+                accept = ""
+                for name, value in scope.get("headers", []):
+                    if name == b"accept-encoding":
+                        accept = value.decode("latin-1")
+                
+                query_string = scope.get("query_string", b"").decode("latin-1")
+                limit_param = None
+                if query_string:
+                    from urllib.parse import parse_qs
+                    qs = parse_qs(query_string)
+                    if "limit" in qs:
+                        limit_param = qs["limit"][0]
+                        
+                if limit_param:
+                    limit = int(limit_param)
+                    if limit > 0 and limit < len(_feed_messages):
+                        sliced = list(_feed_messages)[-limit:]
+                        body = b'{"messages":[' + b','.join(sliced) + b']}'
+                        await send_asgi_response_stream(send, 200, [(b"content-type", b"application/json")], body)
+                        return
+                
+                headers = [(b"content-type", b"application/json")]
+                if "gzip" in accept and _feed_cache_gzip:
+                    headers.append((b"content-encoding", b"gzip"))
+                    await send_asgi_response_stream(send, 200, headers, _feed_cache_gzip)
+                    return
+                
+                await send_asgi_response_stream(send, 200, headers, _feed_cache_plain)
+                return
+            finally:
+                _in_flight_count -= 1
+                
+        elif path == "/message" and method == "POST":
+            _in_flight_count += 1
+            try:
+                body_bytes = b""
+                more_body = True
+                while more_body:
+                    message = await receive()
+                    body_bytes += message.get("body", b"")
+                    more_body = message.get("more_body", False)
+                
+                try:
+                    data = json.loads(body_bytes)
+                    client_name = data["username"]
+                    msg = data["ciphertext"]
+                    msg_id = data.get("msg_id")
+                except Exception:
+                    await send_asgi_response_stream(send, 400, [(b"content-type", b"application/json")], b'{"error":"bad request"}')
+                    return
+                    
+                if not msg_id:
+                    ts_str = str(timestamp())
+                    msg_id = hashlib.md5(f"{client_name}:{msg}:{ts_str}".encode()).hexdigest()
+                    
+                ts_val = timestamp()
+                await _write_queue.put((DEFAULT_FEED_ROOM, msg_id, client_name, msg, ts_val))
+                
+                msg_json = json.dumps({
+                    "msg_id": msg_id,
+                    "username": client_name,
+                    "ciphertext": msg,
+                    "msg": msg,
+                    "timestamp": ts_val
+                }).encode('utf-8')
+                
+                _feed_messages.append(msg_json)
+                global _feed_dirty
+                _feed_dirty = True
+                
+                resp = b'{"status": "ok", "msg_id": "' + msg_id.encode() + b'"}'
+                await send_asgi_response_stream(send, 200, [(b"content-type", b"application/json")], resp)
+                return
+            finally:
+                _in_flight_count -= 1
+
+    await _fastapi_app(scope, receive, send)
+
+app = fast_asgi_app
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
