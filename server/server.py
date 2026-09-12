@@ -1356,12 +1356,47 @@ async def fast_asgi_app(scope, receive, send):
                     body_bytes += message.get("body", b"")
                     more_body = message.get("more_body", False)
                 
-                try:
-                    data = json.loads(body_bytes)
-                    client_name = data["username"]
-                    msg = data["ciphertext"]
-                    msg_id = data.get("msg_id")
-                except Exception:
+                content_type = ""
+                for name, value in scope.get("headers", []):
+                    if name == b"content-type":
+                        content_type = value.decode("latin-1")
+                
+                client_name = None
+                msg = None
+                msg_id = None
+                
+                # 1. Parse JSON or Form
+                if b"application/json" in content_type.encode():
+                    try:
+                        data = json.loads(body_bytes)
+                        client_name = data.get("client-name") or data.get("client_name")
+                        msg = data.get("msg")
+                        msg_id = data.get("msg_id")
+                    except Exception:
+                        pass
+                elif b"urlencoded" in content_type.encode():
+                    from urllib.parse import parse_qs
+                    qs = parse_qs(body_bytes.decode("latin-1"))
+                    if "client-name" in qs: client_name = qs["client-name"][0]
+                    elif "client_name" in qs: client_name = qs["client_name"][0]
+                    if "msg" in qs: msg = qs["msg"][0]
+                    if "msg_id" in qs: msg_id = qs["msg_id"][0]
+                
+                # 2. Fallback to Query String
+                if not client_name or not msg:
+                    query_string = scope.get("query_string", b"").decode("latin-1")
+                    if query_string:
+                        from urllib.parse import parse_qs
+                        qs = parse_qs(query_string)
+                        if not client_name:
+                            if "client-name" in qs: client_name = qs["client-name"][0]
+                            elif "client_name" in qs: client_name = qs["client_name"][0]
+                        if not msg:
+                            if "msg" in qs: msg = qs["msg"][0]
+                        if not msg_id:
+                            if "msg_id" in qs: msg_id = qs["msg_id"][0]
+                            
+                if not client_name or not msg:
                     await send_asgi_response_stream(send, 400, [(b"content-type", b"application/json")], b'{"error":"bad request"}')
                     return
                     
