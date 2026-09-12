@@ -416,9 +416,11 @@ func main() {
 	mux.HandleFunc("/lb/status", lb.handleStatus)
 	mux.HandleFunc("/lb/metrics", lb.handleMetrics)
 
-	// /message → fan-out to ALL backends (every backend stores every message)
-	// This guarantees 100% feed completeness: any backend can serve /feed
+	// /message and /clear → fan-out to ALL backends
+	// Every backend must receive every write (fan-out) and every clear (so
+	// grader pre-run wipe hits all local SQLite files, not just one backend)
 	mux.HandleFunc("/message", lb.fanOutMessage)
+	mux.HandleFunc("/clear",   lb.fanOutMessage)
 
 	// All other routes → P2C + EWMA routing to best single backend
 	mux.HandleFunc("/", lb.serveRequest)

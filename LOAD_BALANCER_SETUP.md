@@ -13,8 +13,9 @@
 **Shared IP:** `10.1.75.51`
 
 > **Storage Separation**:
-> - **SQLite** (via DB Proxy on Sys2): Used for auth, users, rooms, and XP.
-> - **Valkey** (Local in-memory on each backend): Used for the high-volume load-test messages (`/message` + `/feed`). Each backend runs its own fully self-sufficient local Valkey — **no primary/replica replication needed** because the Load Balancer's fan-out strategy writes every message to all backends simultaneously.
+> - **SQLite `chat.db`** (via DB Proxy on Sys2): Used for auth, users, rooms, XP, and WebSocket chat messages. Sys3/Sys4 access this via the proxy.
+> - **SQLite `chat_loadtest.db`** (local on EACH backend): Used exclusively for the load-test `/message` + `/feed` hot path. Each backend has its own fully self-sufficient copy — **no proxy needed** because the LB fan-out writes every message to all backends simultaneously.
+> - **Valkey** (local on each backend): Used for real-time WebSocket chat features (room message cache, live updates).
 
 ---
 
@@ -105,8 +106,8 @@ git pull origin main
 ```
 
 > ⚠️ **Run `git pull` on ALL machines before starting anything.**
-> Scripts like `valkey_primary.sh` and `valkey_replica.sh` have been updated
-> and old versions will not work correctly.
+> The architecture has changed — Sys3 and Sys4 no longer run Valkey replicas.
+> Each backend now runs its own standalone local Valkey.
 
 ---
 
@@ -162,7 +163,7 @@ echo "✅ Binaries ready"
 
 ---
 
-## STEP 3 — Set up Sys2 (Backend-1 + DB Host + Valkey Primary)
+## STEP 3 — Set up Sys2 (Backend-1 + DB Host + Local Valkey)
 
 **`.env` on Sys2:**
 ```env
@@ -175,25 +176,23 @@ BACKEND_NAME=backend-1
 DB_PROXY_PORT=6000
 VALKEY_HOST=127.0.0.1
 VALKEY_PORT=4000
-VALKEY_REPLICA_HOST=127.0.0.1
-VALKEY_REPLICA_PORT=4000
 # DB_PATH and UPLOAD_DIR are blank → uses local server/chat.db and server/uploads/
 ```
 
 **In tmux on Sys2 — open 3 panes:**
 
 ```bash
-# Pane 1: Valkey Primary (Internal Port 4000)
+# Pane 1: Local Valkey (Internal Port 4000)
 cd ~/PixelChat-ChatApp
 bash scripts/valkey_primary.sh 4000
-# → Listening at 0.0.0.0:4000
+# → Listening at 0.0.0.0:4000 (standalone, no replication needed)
 
 # Pane 2: DB Proxy (Internal Port 6000, MUST start before Sys3/Sys4 backends)
 cd ~/PixelChat-ChatApp
 python3 server/db_proxy_server.py
 # → Listening at https://0.0.0.0:6000 (external: https://10.1.75.51:6270)
 
-# Pane 3: Backend-1 (Internal Port 5000, normal)
+# Pane 3: Backend-1 (Internal Port 5000)
 cd ~/PixelChat-ChatApp
 python3 server/server.py
 # → Listening at https://0.0.0.0:5000 (external: https://10.1.75.51:5270)
@@ -201,7 +200,7 @@ python3 server/server.py
 
 ---
 
-## STEP 4 — Set up Sys3 (Backend-2 + Valkey Replica)
+## STEP 4 — Set up Sys3 (Backend-2 + Local Valkey)
 
 **`.env` on Sys3:**
 ```env
@@ -212,29 +211,31 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-2
 DB_PROXY_URL=https://10.1.75.51:6270
-VALKEY_HOST=10.1.75.51
-VALKEY_PORT=4270
-VALKEY_REPLICA_HOST=127.0.0.1
-VALKEY_REPLICA_PORT=4000
+VALKEY_HOST=127.0.0.1
+VALKEY_PORT=4000
 ```
+
+> ✅ `VALKEY_HOST=127.0.0.1` — Sys3 talks to its **own local Valkey**, not Sys2.
+> Fan-out from the Load Balancer ensures this Valkey gets every write.
 
 **In tmux on Sys3 — open 2 panes:**
 ```bash
-# Pane 1: Valkey Replica (Internal Port 4000)
+# Pane 1: Local Valkey (Internal Port 4000, standalone)
 cd ~/PixelChat-ChatApp
-bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
+bash scripts/valkey_primary.sh 4000
+# → Listening at 0.0.0.0:4000 (standalone — no replication needed)
 
 # Pane 2: Backend-2
 cd ~/PixelChat-ChatApp
 bash start_backend.sh
 # → Detects DB_PROXY_URL → uses db_client.py automatically
-# → Connects to local Valkey Replica for reads
+# → Connects to local Valkey at 127.0.0.1:4000
 # → Listening at https://0.0.0.0:5000 (external: https://10.1.75.51:5271)
 ```
 
 ---
 
-## STEP 5 — Set up Sys4 (Backend-3 + Valkey Replica)
+## STEP 5 — Set up Sys4 (Backend-3 + Local Valkey)
 
 **`.env` on Sys4:**
 ```env
@@ -245,17 +246,18 @@ AES_GROUP_KEY=<same key as Sys1>
 HMAC_SECRET=<same secret as Sys1>
 BACKEND_NAME=backend-3
 DB_PROXY_URL=https://10.1.75.51:6270
-VALKEY_HOST=10.1.75.51
-VALKEY_PORT=4270
-VALKEY_REPLICA_HOST=127.0.0.1
-VALKEY_REPLICA_PORT=4000
+VALKEY_HOST=127.0.0.1
+VALKEY_PORT=4000
 ```
+
+> ✅ Same as Sys3 — `VALKEY_HOST=127.0.0.1` points to Sys4's own local Valkey.
 
 **In tmux on Sys4 — open 2 panes:**
 ```bash
-# Pane 1: Valkey Replica (Internal Port 4000)
+# Pane 1: Local Valkey (Internal Port 4000, standalone)
 cd ~/PixelChat-ChatApp
-bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
+bash scripts/valkey_primary.sh 4000
+# → Listening at 0.0.0.0:4000 (standalone — no replication needed)
 
 # Pane 2: Backend-3
 cd ~/PixelChat-ChatApp
@@ -299,15 +301,15 @@ go build -o load_balancer main.go
 
 ```bash
 # 1. Check LB is alive
-curl -k https://10.1.75.51:5269/lb/health
+curl -k http://10.1.75.51:5269/lb/health
 # → {"status":"ok"}
 
 # 2. Check which backends are healthy
-curl -k https://10.1.75.51:5269/lb/status
+curl -k http://10.1.75.51:5269/lb/status
 # → {"backends":[{"url":"...","alive":true,"in_flight":0,"load_score":...,"overloaded":...}, ...]}
 
 # 3. Check metrics
-curl -k https://10.1.75.51:5269/lb/metrics
+curl -k http://10.1.75.51:5269/lb/metrics
 
 # 4. Check DB proxy
 curl -k https://10.1.75.51:6270/health
@@ -406,24 +408,26 @@ watch -n 1 'curl -sk https://10.1.75.51:5269/lb/metrics | python3 -m json.tool'
 
 ## Startup Order (Important!)
 
-Always start in this exact order to ensure successful connections:
+Always start in this exact order:
 
 ```
-1. Sys2: Valkey Primary  → bash scripts/valkey_primary.sh 4000
-2. Sys3: Valkey Replica  → bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
-3. Sys4: Valkey Replica  → bash scripts/valkey_replica.sh 10.1.75.51 4270 4000
-4. Sys2: DB Proxy        → python3 server/db_proxy_server.py
-5. Sys2: Backend-1       → python3 server/server.py
-6. Sys3: Backend-2       → bash start_backend.sh
-7. Sys4: Backend-3       → bash start_backend.sh
-8. Sys1: Load Balancer   → ./load_balancer -port 5000 ...
-9. Sys1: Frontend        → python3 client/serve.py
+1. Sys2: Local Valkey     → bash scripts/valkey_primary.sh 4000
+2. Sys3: Local Valkey     → bash scripts/valkey_primary.sh 4000
+3. Sys4: Local Valkey     → bash scripts/valkey_primary.sh 4000
+4. Sys2: DB Proxy         → python3 server/db_proxy_server.py
+5. Sys2: Backend-1        → python3 server/server.py
+6. Sys3: Backend-2        → bash start_backend.sh
+7. Sys4: Backend-3        → bash start_backend.sh
+8. Sys1: Load Balancer    → ./load_balancer -port 5000 ...
+9. Sys1: Frontend         → python3 client/serve.py
 ```
 
 > **Why this order?**
-> - Valkey Replicas must connect to the Primary on boot.
-> - The DB Proxy **must** be running before Sys3/Sys4 backends start.
+> - Valkey must be up before backends start (backends connect to Valkey on startup).
+> - The DB Proxy **must** be running before Sys3/Sys4 backends start (auth/rooms go through it).
 > - The LB should only start once the backends are ready to serve `/health` checks.
+> - `chat_loadtest.db` is created automatically on first `/message` write — no manual setup needed.
+> - No Valkey replication needed — each backend's Valkey is independent and gets all writes via LB fan-out.
 
 ---
 
@@ -435,7 +439,8 @@ Always start in this exact order to ensure successful connections:
 | LB shows all backends DOWN immediately | Wait ~2s for first health check, then check `/lb/status` |
 | `no healthy backends` error from LB | `curl -k https://10.1.75.51:527X/health` to test each backend directly |
 | Sys3/Sys4 backend crashes on start | DB Proxy not running yet on Sys2 — start it first |
-| `Valkey ConnectionError` | Make sure Valkey primary is running on Sys2. Check `VALKEY_HOST` and `VALKEY_PORT` in `.env` |
+| `Valkey ConnectionError` | Valkey not running on this machine — run `bash scripts/valkey_primary.sh 4000` locally |
+| Feed completeness < 100% after fan-out | Check LB logs — if only 1 backend is alive, it still works. If backends are down, start them. |
 | `DB_PROXY_URL is not set` error | `DB_PROXY_URL` missing from `.env` on Sys3/Sys4 |
 | `certificate verify failed` in curl | Use `curl -k` (skip verify for self-signed cert) |
 | LB cert error | Pass `-cert ../cert.pem -key ../key.pem` flags to load_balancer |
@@ -451,45 +456,63 @@ Always start in this exact order to ensure successful connections:
 | Load Balancer | Sys1 | 5000 | 5269 |
 | Backend-1 | Sys2 | 5000 | 5270 |
 | DB Proxy | Sys2 | 6000 | 6270 |
-| Valkey Primary| Sys2 | 4000 | 4270 |
+| Local Valkey | Sys2 | 4000 | 4270 |
 | Backend-2 | Sys3 | 5000 | 5271 |
-| Valkey Replica| Sys3 | 4000 | 4271 |
+| Local Valkey | Sys3 | 4000 | 4271 |
 | Backend-3 | Sys4 | 5000 | 5272 |
-| Valkey Replica| Sys4 | 4000 | 4272 |
+| Local Valkey | Sys4 | 4000 | 4272 |
 
 
 ---
 
 ## How to Completely Wipe Data (For a Fresh Start)
 
-Run these exact commands to completely wipe all chat history, databases, and memory so you have a 100% fresh start before a load test.
+Run these commands to wipe all data before a clean load test.
 
-### 1. On Sys2 (Primary Database Server)
-Run these commands in the terminal to wipe the SQLite database, flush the Valkey memory, and delete its persistent storage files:
+> ✅ **Shortcut:** Just send `POST /clear` through the LB — it fans out to all backends and wipes `chat_loadtest.db` on each one automatically:
+> ```bash
+> curl -s -X POST http://10.1.75.51:5269/clear
+> ```
+> Use this between grader runs. For a full wipe including auth/users, follow the steps below.
+
+### 1. On Sys2 (Primary Database + Valkey)
 ```bash
-# 1. Delete the SQLite database file
+# Delete the SQLite databases
 rm -f ~/PixelChat-ChatApp/server/chat.db
+rm -f ~/PixelChat-ChatApp/server/chat_loadtest.db
 
-# 2. Flush Valkey memory (if it's currently running)
+# Flush Valkey memory
 redis-cli -p 4000 flushall
 
-# 3. Stop Valkey and delete its persistent AOF/RDB files
+# Stop Valkey and delete persistent files
 pkill -f redis-server
-rm -f ~/PixelChat-ChatApp/*.aof
-rm -f ~/PixelChat-ChatApp/*.rdb
-```
-*(After this, you can restart Valkey Primary with `bash scripts/valkey_primary.sh 4000` and restart your backend).*
+rm -f ~/PixelChat-ChatApp/*.aof ~/PixelChat-ChatApp/*.rdb
 
-### 2. On Sys3 and Sys4 (Replica Servers)
-Run these commands to stop the replicas and clear any leftover storage files:
+# Restart Valkey
+bash scripts/valkey_primary.sh 4000
+```
+
+### 2. On Sys3 (Backend-2 + Local Valkey)
 ```bash
-# 1. Stop the replica
+# Wipe load-test DB (chat.db doesn't exist locally on Sys3 — it uses the proxy)
+rm -f ~/PixelChat-ChatApp/server/chat_loadtest.db
+
+# Flush and restart Valkey
+redis-cli -p 4000 flushall
 pkill -f redis-server
-
-# 2. Delete any synced storage files
-rm -f ~/PixelChat-ChatApp/*.rdb
-rm -f ~/PixelChat-ChatApp/*.aof
+rm -f ~/PixelChat-ChatApp/*.rdb ~/PixelChat-ChatApp/*.aof
+bash scripts/valkey_primary.sh 4000
 ```
-*(After this, you can restart your replicas using `bash scripts/valkey_replica.sh 10.1.75.51 4270 4000` and restart your backends).*
 
-Once you've done this across your servers, your app will be completely empty (0 users, 0 messages) and perfectly clean for your final load tests!
+### 3. On Sys4 (Backend-3 + Local Valkey)
+```bash
+# Same as Sys3
+rm -f ~/PixelChat-ChatApp/server/chat_loadtest.db
+
+redis-cli -p 4000 flushall
+pkill -f redis-server
+rm -f ~/PixelChat-ChatApp/*.rdb ~/PixelChat-ChatApp/*.aof
+bash scripts/valkey_primary.sh 4000
+```
+
+> ⚠️ After wiping, restart all backends and the LB before submitting to the grader.
