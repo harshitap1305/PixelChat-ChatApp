@@ -139,18 +139,17 @@ def save_message_fast(room_id: str, msg_id: str, username: str, msg: str, timest
         _put_conn(conn)
 
 
-def get_history_fast(room_id: str) -> list[dict]:
+def get_history_fast(room_id: str, limit: int = 100) -> list[dict]:
     """
-    Read ALL messages from LOCAL SQLite — does NOT go through the DB proxy.
-    No limit — grader needs 100% completeness.
+    Read messages from LOCAL SQLite — does NOT go through the DB proxy.
     Returns both 'ciphertext' and 'msg' keys for grader compatibility.
     """
     conn = _get_conn()
     try:
         rows = conn.execute(
             "SELECT msg_id, username, ciphertext, timestamp "
-            "FROM messages WHERE room_id = ? ORDER BY id ASC",
-            (room_id,),
+            "FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?",
+            (room_id, limit),
         ).fetchall()
     finally:
         _put_conn(conn)

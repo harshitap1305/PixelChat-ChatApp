@@ -222,7 +222,7 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 			defer backend.DecrementInFlight()
 
 			targetURL := *backend.URL
-			targetURL.Path = strings.TrimRight(targetURL.Path, "/") + "/message"
+			targetURL.Path = strings.TrimRight(targetURL.Path, "/") + r.URL.Path
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

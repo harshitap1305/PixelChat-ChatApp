@@ -383,18 +383,18 @@ def save_message_fast(room_id: str, msg_id: str, username: str, msg: str, timest
         _put_conn(conn)
 
 
-def get_history_fast(room_id: str) -> list[dict]:
+def get_history_fast(room_id: str, limit: int = 100) -> list[dict]:
     """
     Lightweight history retrieval for the load-gen /feed hot path.
     Skips HMAC verification and whisper filtering for maximum throughput.
-    Returns ALL messages (no limit) — grader needs 100% completeness.
+    Returns messages up to the limit.
     """
     conn = _get_conn()
     try:
         rows = conn.execute(
             "SELECT msg_id, username, ciphertext, timestamp "
-            "FROM messages WHERE room_id = ? ORDER BY id ASC",
-            (room_id,),
+            "FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT ?",
+            (room_id, limit),
         ).fetchall()
     finally:
         _put_conn(conn)
