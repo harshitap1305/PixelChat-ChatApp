@@ -289,7 +289,7 @@ CLEANUP_TIMEOUT = int(os.environ.get("CLEANUP_TIMEOUT", 300))
 
 import collections
 
-_write_queue: asyncio.Queue = asyncio.Queue()
+_write_queue: asyncio.Queue = asyncio.Queue(maxsize=10000)
 
 _feed_messages = collections.deque(maxlen=100000)
 _feed_cache_plain = b'{"messages":[]}'
@@ -316,32 +316,24 @@ async def _writer_loop():
     """One coroutine, all writes go through here in order to prevent SQLite lock contention."""
     while True:
         batch = []
-        futs = []
         
         # Wait for at least one item
-        room_id, msg_id, username, msg, ts, fut = await _write_queue.get()
+        room_id, msg_id, username, msg, ts = await _write_queue.get()
         batch.append((room_id, msg_id, username, msg, ts))
-        futs.append(fut)
         
         # Drain up to 250 items quickly
         while len(batch) < 250:
             try:
-                room_id, msg_id, username, msg, ts, fut = _write_queue.get_nowait()
+                room_id, msg_id, username, msg, ts = _write_queue.get_nowait()
                 batch.append((room_id, msg_id, username, msg, ts))
-                futs.append(fut)
             except asyncio.QueueEmpty:
                 break
                 
-        # Bulk write
+        # Bulk write (fire and forget)
         try:
-            res = await asyncio.to_thread(db.save_messages_batch_fast, batch)
-            for f in futs:
-                if not f.done():
-                    f.set_result(res)
+            await asyncio.to_thread(db.save_messages_batch_fast, batch)
         except Exception:
-            for f in futs:
-                if not f.done():
-                    f.set_result(0)
+            pass
         finally:
             for _ in batch:
                 _write_queue.task_done()
@@ -440,8 +432,7 @@ async def post_message(request: FastRequest):
         msg_id = hashlib.md5(f"{client_name}:{msg}:{ts_str}".encode()).hexdigest()
 
     ts_val = timestamp()
-    fut = asyncio.get_event_loop().create_future()
-    await _write_queue.put((DEFAULT_FEED_ROOM, msg_id, client_name, msg, ts_val, fut))
+    await _write_queue.put((DEFAULT_FEED_ROOM, msg_id, client_name, msg, ts_val))
     
     # Append to memory cache instantly
     global _feed_dirty
@@ -456,7 +447,7 @@ async def post_message(request: FastRequest):
     _feed_messages.append(msg_json)
     _feed_dirty = True
     
-    await fut
+    # Return instantly (fire-and-forget DB write) to keep latency near 0ms
     return {"status": "ok", "msg_id": msg_id}
 
 
@@ -528,6 +519,23 @@ async def startup():
     """Initialise the SQLite database and Valkey feed store on server start."""
     asyncio.create_task(_writer_loop())
     asyncio.create_task(_rebuild_feed_loop())
+    
+    def load_initial_feed():
+        history = db.get_history_fast(DEFAULT_FEED_ROOM)
+        for row in reversed(history):
+            msg_json = json.dumps({
+                "msg_id": row["msg_id"],
+                "username": row["username"],
+                "ciphertext": row["ciphertext"],
+                "msg": row.get("msg", row["ciphertext"]),
+                "timestamp": row["timestamp"]
+            }).encode('utf-8')
+            _feed_messages.append(msg_json)
+        global _feed_dirty
+        _feed_dirty = True
+
+    await asyncio.to_thread(load_initial_feed)
+    
     limiter = anyio.to_thread.current_default_thread_limiter()
     limiter.total_tokens = 24   # lowered from 200 since only reads need threads now
     # We only initialize SQLite if we are NOT running behind a proxy that shares it,
