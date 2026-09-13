@@ -290,9 +290,12 @@ BACKEND_NAME=lb-node
 cd ~/PixelChat-ChatApp/load_balancer
 pkill -f load_balancer
 go build -o load_balancer main.go
-./load_balancer \
+until ./load_balancer \
   -port 5000 \
-  -backends "https://10.1.75.51:5270,https://10.1.75.51:5271,https://10.1.75.51:5272"
+  -backends "https://10.1.75.51:5270,https://10.1.75.51:5271,https://10.1.75.51:5272"; do
+    echo "[!] LB crashed — restarting in 2s..."
+    sleep 2
+done
 ```
 
 ---

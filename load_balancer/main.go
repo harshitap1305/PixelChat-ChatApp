@@ -129,9 +129,10 @@ func (c *cappedConn) Close() error {
 
 // LoadBalancer holds the backend pool, a round-robin counter and metrics.
 type LoadBalancer struct {
-	backends []*Backend
-	next     atomic.Uint64
-	metrics  Metrics
+	backends      []*Backend
+	next          atomic.Uint64
+	metrics       Metrics
+	totalInFlight atomic.Int32
 }
 
 // overloadThreshold is the max in-flight requests per backend before it is
@@ -424,6 +425,27 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (lb *LoadBalancer) withGlobalBackpressure(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Fast paths for monitoring to avoid skewing the active connection count
+		if strings.HasPrefix(r.URL.Path, "/lb/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if lb.totalInFlight.Add(1) > 2000 {
+			lb.totalInFlight.Add(-1)
+			lb.metrics.Total.Add(1)
+			lb.metrics.Failed.Add(1)
+			w.Header().Set("Connection", "close")
+			http.Error(w, `{"error":"overloaded"}`, http.StatusServiceUnavailable)
+			return
+		}
+		defer lb.totalInFlight.Add(-1)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // ── Monitoring Endpoints ────────────────────────────────────────────────      
 
 func (lb *LoadBalancer) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -594,7 +616,7 @@ func main() {
 	if certExists {
 		fmt.Printf("  Mode: HTTPS (cert: %s)\n", *certFile)
 		fmt.Println(divider)
-		server := &http.Server{Addr: addr, Handler: mux}
+		server := &http.Server{Addr: addr, Handler: lb.withGlobalBackpressure(mux)}
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
@@ -605,7 +627,7 @@ func main() {
 	} else {
 		fmt.Printf("  Mode: HTTP (no cert found at %q — running plain HTTP)\n", *certFile)
 		fmt.Println(divider)
-		server := &http.Server{Addr: addr, Handler: mux}
+		server := &http.Server{Addr: addr, Handler: lb.withGlobalBackpressure(mux)}
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)

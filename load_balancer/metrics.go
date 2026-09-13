@@ -17,12 +17,20 @@ type Metrics struct {
 
 	mu        sync.Mutex
 	latencies []time.Duration
+	idx       int
 }
 
-// RecordLatency appends a successful request latency.
+const maxLatencies = 5000
+
+// RecordLatency appends a successful request latency, capping the history to maxLatencies.
 func (m *Metrics) RecordLatency(d time.Duration) {
 	m.mu.Lock()
-	m.latencies = append(m.latencies, d)
+	if len(m.latencies) < maxLatencies {
+		m.latencies = append(m.latencies, d)
+	} else {
+		m.latencies[m.idx] = d
+		m.idx = (m.idx + 1) % maxLatencies
+	}
 	m.mu.Unlock()
 }
 
