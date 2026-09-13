@@ -88,18 +88,41 @@ func applyMemoryLimit() {
 
 type cappedListener struct {
 	net.Listener
+	sem chan struct{}
+}
+
+func newCappedListener(l net.Listener, limit int) *cappedListener {
+	return &cappedListener{
+		Listener: l,
+		sem:      make(chan struct{}, limit),
+	}
 }
 
 func (l *cappedListener) Accept() (net.Conn, error) {
+	l.sem <- struct{}{}
 	c, err := l.Listener.Accept()
 	if err != nil {
+		<-l.sem
 		return nil, err
 	}
 	if tc, ok := c.(*net.TCPConn); ok {
 		tc.SetReadBuffer(16 * 1024)
 		tc.SetWriteBuffer(32 * 1024)
 	}
-	return c, nil
+	return &cappedConn{Conn: c, sem: l.sem}, nil
+}
+
+type cappedConn struct {
+	net.Conn
+	sem    chan struct{}
+	closed atomic.Bool
+}
+
+func (c *cappedConn) Close() error {
+	if c.closed.CompareAndSwap(false, true) {
+		<-c.sem
+	}
+	return c.Conn.Close()
 }
 
 // ── LoadBalancer ──────────────────────────────────────────────────────────────
@@ -299,6 +322,7 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 	for _, b := range alive {
 		if b.InFlightCount() > 1000 {
 			lb.metrics.Failed.Add(1)
+			w.Header().Set("Connection", "close")
 			http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
 			return
 		}
@@ -382,6 +406,7 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 
 	if b.InFlightCount() > 1000 {
 		lb.metrics.Failed.Add(1)
+		w.Header().Set("Connection", "close")
 		http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
 		return
 	}
@@ -574,7 +599,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
 		}
-		if err := server.ServeTLS(&cappedListener{ln}, *certFile, *keyFile); err != nil {
+		if err := server.ServeTLS(newCappedListener(ln, 2000), *certFile, *keyFile); err != nil {
 			log.Fatalf("[FATAL] HTTPS server error: %v", err)
 		}
 	} else {
@@ -585,7 +610,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
 		}
-		if err := server.Serve(&cappedListener{ln}); err != nil {
+		if err := server.Serve(newCappedListener(ln, 2000)); err != nil {
 			log.Fatalf("[FATAL] HTTP server error: %v", err)
 		}
 	}
