@@ -274,8 +274,9 @@ func (lb *LoadBalancer) statsLoop(interval time.Duration) {
 var globalTransport = &http.Transport{
 	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 	ResponseHeaderTimeout: 10 * time.Second,
-	MaxIdleConns:          2000,             // increased: handles 2500 concurrent users
-	MaxIdleConnsPerHost:   1000,             // increased: full connection reuse per backend
+	MaxConnsPerHost:       300,              // Hard block: max active + idle connections per backend
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   50,
 	IdleConnTimeout:       90 * time.Second, // fixed: was 4s, caused TCP churn under load
 	DialContext: (&net.Dialer{
 		Timeout:   5 * time.Second,
@@ -298,7 +299,7 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 	lb.metrics.Total.Add(1)
 
 	// Read body once — HTTP body is a stream that can only be consumed once.
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 65536))
 	r.Body.Close()
 	if err != nil {
 		lb.metrics.Failed.Add(1)
@@ -319,14 +320,7 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, b := range alive {
-		if b.InFlightCount() > 1000 {
-			lb.metrics.Failed.Add(1)
-			w.Header().Set("Connection", "close")
-			http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
-			return
-		}
-	}
+
 
 	type result struct {
 		status int
@@ -359,7 +353,7 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer resp.Body.Close()
-			respBody, _ := io.ReadAll(resp.Body)
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 			ch <- result{status: resp.StatusCode, body: respBody}
 		}(b)
 	}
@@ -404,12 +398,7 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if b.InFlightCount() > 1000 {
-		lb.metrics.Failed.Add(1)
-		w.Header().Set("Connection", "close")
-		http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
-		return
-	}
+
 
 	b.IncrementInFlight()
 	defer b.DecrementInFlight()
@@ -599,7 +588,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
 		}
-		if err := server.ServeTLS(newCappedListener(ln, 2000), *certFile, *keyFile); err != nil {
+		if err := server.ServeTLS(newCappedListener(ln, 1000), *certFile, *keyFile); err != nil {
 			log.Fatalf("[FATAL] HTTPS server error: %v", err)
 		}
 	} else {
@@ -610,7 +599,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
 		}
-		if err := server.Serve(newCappedListener(ln, 2000)); err != nil {
+		if err := server.Serve(newCappedListener(ln, 1000)); err != nil {
 			log.Fatalf("[FATAL] HTTP server error: %v", err)
 		}
 	}
