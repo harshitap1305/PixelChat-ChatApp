@@ -274,9 +274,8 @@ func (lb *LoadBalancer) statsLoop(interval time.Duration) {
 var globalTransport = &http.Transport{
 	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 	ResponseHeaderTimeout: 10 * time.Second,
-	MaxConnsPerHost:       300,              // Hard block: max active + idle connections per backend
-	MaxIdleConns:          100,
-	MaxIdleConnsPerHost:   50,
+	MaxIdleConns:          600,
+	MaxIdleConnsPerHost:   200,
 	IdleConnTimeout:       90 * time.Second, // fixed: was 4s, caused TCP churn under load
 	DialContext: (&net.Dialer{
 		Timeout:   5 * time.Second,
@@ -320,7 +319,14 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
+	for _, b := range alive {
+		if b.InFlightCount() > 800 {
+			lb.metrics.Failed.Add(1)
+			w.Header().Set("Connection", "close")
+			http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
+			return
+		}
+	}
 
 	type result struct {
 		status int
@@ -332,11 +338,11 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Fire one goroutine per backend — all run concurrently.
 	for _, b := range alive {
-		go func(backend *Backend) {
-			backend.IncrementInFlight()
-			defer backend.DecrementInFlight()
+		b.IncrementInFlight()
+		go func(b *Backend) {
+			defer b.DecrementInFlight()
 
-			targetURL := *backend.URL
+			targetURL := *b.URL
 			targetURL.Path = strings.TrimRight(targetURL.Path, "/") + r.URL.Path
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -398,7 +404,12 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
+	if b.InFlightCount() > 800 {
+		lb.metrics.Failed.Add(1)
+		w.Header().Set("Connection", "close")
+		http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
+		return
+	}
 
 	b.IncrementInFlight()
 	defer b.DecrementInFlight()
@@ -588,7 +599,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
 		}
-		if err := server.ServeTLS(newCappedListener(ln, 1000), *certFile, *keyFile); err != nil {
+		if err := server.ServeTLS(newCappedListener(ln, 2500), *certFile, *keyFile); err != nil {
 			log.Fatalf("[FATAL] HTTPS server error: %v", err)
 		}
 	} else {
@@ -599,7 +610,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[FATAL] TCP listen error: %v", err)
 		}
-		if err := server.Serve(newCappedListener(ln, 1000)); err != nil {
+		if err := server.Serve(newCappedListener(ln, 2500)); err != nil {
 			log.Fatalf("[FATAL] HTTP server error: %v", err)
 		}
 	}
