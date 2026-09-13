@@ -180,6 +180,9 @@ func (lb *LoadBalancer) healthLoop(interval time.Duration) {
 			resp, err := client.Get(healthURL)
 
 			if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
+				if resp != nil && resp.Body != nil {
+					resp.Body.Close()
+				}
 				// If recently served a proxy request, give it a pass
 				if lastGood := b.lastGoodNanos.Load(); lastGood > 0 && time.Since(time.Unix(0, lastGood)) < 5*time.Second {
 					b.failStreak.Store(0)
@@ -293,6 +296,14 @@ func (lb *LoadBalancer) fanOutMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, b := range alive {
+		if b.InFlightCount() > 1000 {
+			lb.metrics.Failed.Add(1)
+			http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
+			return
+		}
+	}
+
 	type result struct {
 		status int
 		body   []byte
@@ -369,6 +380,12 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if b.InFlightCount() > 1000 {
+		lb.metrics.Failed.Add(1)
+		http.Error(w, `{"error":"backend overloaded"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	b.IncrementInFlight()
 	defer b.DecrementInFlight()
 
@@ -382,7 +399,7 @@ func (lb *LoadBalancer) serveRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ── Monitoring Endpoints ──────────────────────────────────────────────────────
+// ── Monitoring Endpoints ────────────────────────────────────────────────      
 
 func (lb *LoadBalancer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

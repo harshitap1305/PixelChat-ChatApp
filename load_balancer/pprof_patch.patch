@@ -1,0 +1,19 @@
+--- main.go
++++ main.go
+@@ -21,6 +21,7 @@
+ 	"strings"
+ 	"sync"
+ 	"time"
++	_ "net/http/pprof"
+ )
+ 
+ // ── Global Settings ────────────────────────────────────────────────────────
+@@ -522,6 +523,9 @@
+ 		}
+ 	}
+ 
++	go func() {
++		log.Println(http.ListenAndServe("localhost:6060", nil))
++	}()
++
+ 	lb := &LoadBalancer{backends: backends}
