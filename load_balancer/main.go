@@ -275,8 +275,8 @@ func (lb *LoadBalancer) statsLoop(interval time.Duration) {
 var globalTransport = &http.Transport{
 	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true}, // #nosec G402
 	ResponseHeaderTimeout: 10 * time.Second,
-	MaxIdleConns:          600,
-	MaxIdleConnsPerHost:   200,
+	MaxIdleConns:          9000,
+	MaxIdleConnsPerHost:   3000,
 	IdleConnTimeout:       90 * time.Second, // fixed: was 4s, caused TCP churn under load
 	DialContext: (&net.Dialer{
 		Timeout:   5 * time.Second,
