@@ -357,7 +357,7 @@ cd PixelChat-ChatApp/load_generator
 ### Experiment 4 — Three Backends (LB): Write-only
 
 ```bash
-./load_generator -url https://10.1.75.51:5269 -requests 20000 -concurrency 200 \
+./load_generator -url http://10.1.75.51:5269 -requests 20000 -concurrency 200 \
   -experiment lb_write -mode message -users 100 -min-len 20 -max-len 300 \
   -health-urls https://10.1.75.51:5270/health,https://10.1.75.51:5271/health,https://10.1.75.51:5272/health -out ./results
 ```
@@ -365,7 +365,7 @@ cd PixelChat-ChatApp/load_generator
 ### Experiment 5 — Three Backends (LB): Read-only
 
 ```bash
-./load_generator -url https://10.1.75.51:5269 -requests 20000 -concurrency 200 \
+./load_generator -url http://10.1.75.51:5269 -requests 20000 -concurrency 200 \
   -experiment lb_read -mode feed \
   -health-urls https://10.1.75.51:5270/health,https://10.1.75.51:5271/health,https://10.1.75.51:5272/health -out ./results
 ```
@@ -373,7 +373,7 @@ cd PixelChat-ChatApp/load_generator
 ### Experiment 6 — Three Backends (LB): Mixed (80% Writes / 20% Reads)
 
 ```bash
-./load_generator -url https://10.1.75.51:5269 -requests 20000 -concurrency 200 \
+./load_generator -url http://10.1.75.51:5269 -requests 20000 -concurrency 200 \
   -experiment lb_mixed -mode mixed -read-ratio 0.2 -users 100 -min-len 20 -max-len 300 \
   -health-urls https://10.1.75.51:5270/health,https://10.1.75.51:5271/health,https://10.1.75.51:5272/health \
   -out ./results
